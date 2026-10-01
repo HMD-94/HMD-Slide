@@ -1,0 +1,6 @@
+{
+  "name": "HMD Slides",
+  "description": "Suite de création de présentations moderne, rapide et fluide directement dans le navigateur, avec export autonome et outils avancés.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
