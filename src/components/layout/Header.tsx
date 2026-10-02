@@ -25,6 +25,9 @@ import {
   Palette,
   HelpCircle,
   Check,
+  Cloud,
+  Home,
+  RefreshCw,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,6 +36,8 @@ interface HeaderProps {
   canUndo: boolean;
   canRedo: boolean;
   isSaved: boolean;
+  isCloudSaving?: boolean;
+  cloudSaveSuccess?: boolean;
   zoom: number;
   onUpdateTitle: (title: string) => void;
   onUndo: () => void;
@@ -41,6 +46,8 @@ interface HeaderProps {
   onNewPresentation: () => void;
   onOpenFilePicker: () => void;
   onSaveManual: () => void;
+  onSaveToCloud: () => void;
+  onOpenWelcomeModal: () => void;
   onExportModalOpen: () => void;
   onThemeModalOpen: () => void;
   onSettingsModalOpen: () => void;
@@ -59,6 +66,8 @@ export const Header: React.FC<HeaderProps> = ({
   canUndo,
   canRedo,
   isSaved,
+  isCloudSaving = false,
+  cloudSaveSuccess = false,
   zoom,
   onUpdateTitle,
   onUndo,
@@ -67,6 +76,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNewPresentation,
   onOpenFilePicker,
   onSaveManual,
+  onSaveToCloud,
+  onOpenWelcomeModal,
   onExportModalOpen,
   onThemeModalOpen,
   onSettingsModalOpen,
@@ -117,14 +128,26 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Zone 1: Logo & Title & Menus */}
       <div className="flex items-center gap-4" ref={menuBarRef}>
         {/* Brand Lockup */}
-        <div className="flex items-center gap-2 pr-2 border-r border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+        <button
+          type="button"
+          onClick={onOpenWelcomeModal}
+          className="flex items-center gap-2 pr-2 border-r border-slate-800 hover:opacity-90 transition-opacity cursor-pointer group"
+          title="Ouvrir l’accueil & mes diaporamas Cloud"
+        >
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
             <Sparkles className="w-4 h-4" />
           </div>
-          <span className="font-bold text-sm tracking-tight text-white font-['Cabinet_Grotesk']">
-            HMD Slides
-          </span>
-        </div>
+          <div className="flex flex-col text-left">
+            <span className="font-bold text-sm tracking-tight text-white font-['Cabinet_Grotesk'] leading-tight">
+              HMD Slides
+            </span>
+            <span className="text-[9px] text-cyan-400 font-semibold flex items-center gap-1">
+              <span>Accueil</span>
+              <span aria-hidden="true">·</span>
+              <span>Cloud</span>
+            </span>
+          </div>
+        </button>
 
         {/* Project Title + Status */}
         <div className="flex items-center gap-2">
@@ -181,6 +204,19 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="absolute left-0 mt-1 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs">
                 <button
                   onClick={() => {
+                    onOpenWelcomeModal();
+                    setActiveMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 flex items-center justify-between text-indigo-300 font-semibold"
+                >
+                  <span className="flex items-center gap-2">
+                    <Home className="w-3.5 h-3.5 text-indigo-400" /> Accueil & Mes Diapos
+                  </span>
+                  <span className="text-[9px] uppercase px-1.5 py-0.2 bg-indigo-900/60 rounded text-indigo-300">Cloud</span>
+                </button>
+                <div className="h-px bg-slate-800 my-1" />
+                <button
+                  onClick={() => {
                     onNewPresentation();
                     setActiveMenu(null);
                   }}
@@ -199,9 +235,21 @@ export const Header: React.FC<HeaderProps> = ({
                   className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 flex items-center justify-between"
                 >
                   <span className="flex items-center gap-2">
-                    <FolderOpen className="w-3.5 h-3.5" /> Ouvrir...
+                    <FolderOpen className="w-3.5 h-3.5" /> Ouvrir fichier (.hmdslides)...
                   </span>
                   <span className="text-[10px] text-slate-500 font-mono">Ctrl+O</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onSaveToCloud();
+                    setActiveMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 flex items-center justify-between text-cyan-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <Cloud className="w-3.5 h-3.5 text-cyan-400" /> Sauvegarder sur Firebase Cloud
+                  </span>
+                  <span className="text-[10px] text-cyan-500 font-mono">Online</span>
                 </button>
                 <button
                   onClick={() => {
@@ -453,8 +501,35 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Zone 3: Primary Actions (Presentation & Export) */}
+      {/* Zone 3: Primary Actions (Presentation, Cloud & Export) */}
       <div className="flex items-center gap-2">
+        {/* Firebase Cloud Save Button */}
+        <button
+          onClick={onSaveToCloud}
+          disabled={isCloudSaving}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm ${
+            cloudSaveSuccess
+              ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
+              : 'border-cyan-500/40 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-200'
+          }`}
+          title="Enregistrer ce diaporama dans Firebase Cloud"
+        >
+          {isCloudSaving ? (
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+          ) : cloudSaveSuccess ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+          )}
+          <span className="hidden md:inline">
+            {isCloudSaving
+              ? 'Sauvegarde...'
+              : cloudSaveSuccess
+              ? 'Enregistré Cloud'
+              : 'Sauvegarder Cloud'}
+          </span>
+        </button>
+
         {/* Presenter Mode */}
         <button
           onClick={onStartPresenterMode}

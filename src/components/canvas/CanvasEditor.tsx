@@ -18,6 +18,10 @@ interface CanvasEditorProps {
   onDuplicateSelected: () => void;
   onBringForward: () => void;
   onSendBackward: () => void;
+  onBringToFront?: () => void;
+  onSendToBack?: () => void;
+  onDragOrResizeEnd?: () => void;
+  previewAnimation?: { elementId: string; animType: string } | null;
   onAddImageFromDataUrl: (dataUrl: string) => void;
 }
 
@@ -36,6 +40,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onDuplicateSelected,
   onBringForward,
   onSendBackward,
+  onBringToFront,
+  onSendToBack,
+  onDragOrResizeEnd,
+  previewAnimation,
   onAddImageFromDataUrl,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -339,6 +347,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
 
     const handleMouseUp = () => {
+      const wasManipulating = isDragging || !!isResizing || isRotating;
       setIsDragging(false);
       setDragStartPos(null);
       setIsResizing(null);
@@ -346,6 +355,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setIsRotating(false);
       setSelectionBox(null);
       setGuides({});
+      if (wasManipulating) {
+        onDragOrResizeEnd?.();
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -455,6 +467,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 }}
                 className={`absolute group cursor-move ${
                   isSelected ? 'ring-2 ring-indigo-500' : 'hover:ring-1 hover:ring-indigo-400/50'
+                } ${
+                  previewAnimation?.elementId === el.id
+                    ? `anim-preview-${previewAnimation.animType}`
+                    : ''
                 }`}
                 style={{
                   left: `${el.x * zoom}px`,
@@ -553,6 +569,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
           <button
             onClick={() => {
+              onBringToFront?.();
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 hover:text-white flex items-center gap-2"
+          >
+            <ArrowUp className="w-3.5 h-3.5 text-indigo-400" /> Mettre au premier plan
+          </button>
+
+          <button
+            onClick={() => {
               onBringForward();
               setContextMenu(null);
             }}
@@ -569,6 +595,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 hover:text-white flex items-center gap-2"
           >
             <ArrowDown className="w-3.5 h-3.5 text-slate-400" /> Reculer d’un plan
+          </button>
+
+          <button
+            onClick={() => {
+              onSendToBack?.();
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-1.5 text-left hover:bg-indigo-600/30 hover:text-white flex items-center gap-2"
+          >
+            <ArrowDown className="w-3.5 h-3.5 text-indigo-400" /> Mettre à l’arrière-plan
           </button>
 
           <div className="h-px bg-slate-800 my-1" />

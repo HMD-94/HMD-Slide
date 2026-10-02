@@ -6,6 +6,7 @@ import {
   SlideLayout,
   ShapeType,
   EditorSettings,
+  AnimationType,
 } from './types/slides';
 import {
   loadSavedPresentation,
@@ -16,6 +17,7 @@ import {
 } from './utils/storage';
 import { importProjectFromFile } from './utils/exportProject';
 import { getThemeById } from './constants/themes';
+import { savePresentationToFirebase } from './services/firebase';
 
 import { Header } from './components/layout/Header';
 import { Toolbar } from './components/layout/Toolbar';
@@ -27,6 +29,7 @@ import { NotesDrawer } from './components/layout/NotesDrawer';
 import { PresentationMode } from './components/presentation/PresentationMode';
 import { PresenterMode } from './components/presentation/PresenterMode';
 
+import { WelcomeModal } from './components/modals/WelcomeModal';
 import { ChartEditorModal } from './components/modals/ChartEditorModal';
 import { TableEditorModal } from './components/modals/TableEditorModal';
 import { IconPickerModal } from './components/modals/IconPickerModal';
@@ -37,19 +40,35 @@ import { SettingsModal } from './components/modals/SettingsModal';
 
 export default function App() {
   // Main presentation state
-  const [presentation, setPresentation] = useState<Presentation>(loadSavedPresentation);
+  const initialPresentation = loadSavedPresentation();
+  const [presentation, setPresentation] = useState<Presentation>(initialPresentation);
   const [activeSlideId, setActiveSlideId] = useState<string>(() => {
-    const saved = loadSavedPresentation();
-    return saved.slides[0]?.id || 'slide-1';
+    return initialPresentation.slides[0]?.id || 'slide-1';
   });
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [zoom, setZoom] = useState<number>(0.9);
   const [settings, setSettings] = useState<EditorSettings>(loadSavedSettings);
   const [isSaved, setIsSaved] = useState<boolean>(true);
 
-  // Undo / Redo history
-  const [history, setHistory] = useState<Presentation[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  // Cloud Save State
+  const [isCloudSaving, setIsCloudSaving] = useState<boolean>(false);
+  const [cloudSaveSuccess, setCloudSaveSuccess] = useState<boolean>(false);
+
+  // Animation preview state
+  const [previewAnimation, setPreviewAnimation] = useState<{
+    elementId: string;
+    animType: string;
+  } | null>(null);
+
+  // Welcome / Home start modal
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(() => {
+    // Show on first visit if nothing previously saved in localStorage
+    return !localStorage.getItem('hmd_slides_project_v1');
+  });
+
+  // Rock-solid Undo / Redo history stack
+  const [historyPast, setHistoryPast] = useState<Presentation[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<Presentation[]>([]);
 
   // Clipboard
   const [clipboard, setClipboard] = useState<SlideElement[]>([]);
@@ -73,66 +92,96 @@ export default function App() {
   const activeSlide =
     presentation.slides.find((s) => s.id === activeSlideId) || presentation.slides[0];
 
-  // Save to history helper
-  const pushHistory = useCallback(
-    (newPresentation: Presentation) => {
-      setHistory((prev) => {
-        const next = prev.slice(0, historyIndex + 1);
-        if (next.length > 30) next.shift();
-        return [...next, newPresentation];
-      });
-      setHistoryIndex((prev) => prev + 1);
-    },
-    [historyIndex]
-  );
-
-  // Update presentation and trigger history + auto-save
+  /**
+   * Update presentation with optional history recording
+   */
   const updatePresentation = useCallback(
-    (updater: (prev: Presentation) => Presentation, saveToHistory: boolean = true) => {
-      setPresentation((prev) => {
-        const next = updater(prev);
-        if (saveToHistory) {
-          pushHistory(next);
+    (updater: (prev: Presentation) => Presentation, recordHistory: boolean = true) => {
+      setPresentation((current) => {
+        const next = updater(current);
+        if (recordHistory) {
+          setHistoryPast((past) => [...past.slice(-30), JSON.parse(JSON.stringify(current))]);
+          setHistoryFuture([]);
         }
         setIsSaved(false);
         return next;
       });
     },
-    [pushHistory]
+    []
   );
 
-  // Auto-save debounce effect
+  /**
+   * Commit a drag or resize operation to history
+   */
+  const handleDragOrResizeEnd = useCallback(() => {
+    setHistoryPast((past) => [...past.slice(-30), JSON.parse(JSON.stringify(presentation))]);
+    setHistoryFuture([]);
+    setIsSaved(false);
+  }, [presentation]);
+
+  // Auto-save debounce effect to localStorage
   useEffect(() => {
     const timer = setTimeout(() => {
       savePresentationToStorage(presentation);
       setIsSaved(true);
-    }, 1200);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [presentation]);
 
-  // Undo & Redo Handlers
+  // Undo Handler
   const handleUndo = useCallback(() => {
-    if (historyIndex > 0) {
-      const prev = history[historyIndex - 1];
-      setHistoryIndex((i) => i - 1);
-      setPresentation(prev);
-      setIsSaved(false);
-    }
-  }, [history, historyIndex]);
+    if (historyPast.length === 0) return;
+    const previous = historyPast[historyPast.length - 1];
+    const newPast = historyPast.slice(0, historyPast.length - 1);
 
+    setHistoryFuture((future) => [JSON.parse(JSON.stringify(presentation)), ...future]);
+    setHistoryPast(newPast);
+    setPresentation(previous);
+    setIsSaved(false);
+  }, [historyPast, presentation]);
+
+  // Redo Handler
   const handleRedo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const next = history[historyIndex + 1];
-      setHistoryIndex((i) => i + 1);
-      setPresentation(next);
-      setIsSaved(false);
+    if (historyFuture.length === 0) return;
+    const next = historyFuture[0];
+    const newFuture = historyFuture.slice(1);
+
+    setHistoryPast((past) => [...past, JSON.parse(JSON.stringify(presentation))]);
+    setHistoryFuture(newFuture);
+    setPresentation(next);
+    setIsSaved(false);
+  }, [historyFuture, presentation]);
+
+  // Save to Firebase Cloud
+  const handleSaveToCloud = async () => {
+    setIsCloudSaving(true);
+    setCloudSaveSuccess(false);
+    try {
+      const ok = await savePresentationToFirebase(presentation);
+      if (ok) {
+        setCloudSaveSuccess(true);
+        setTimeout(() => setCloudSaveSuccess(false), 3500);
+      } else {
+        alert("Sauvegardé dans le cache Cloud local. Vérifiez la configuration des règles Firebase.");
+      }
+    } catch (err: any) {
+      alert("Erreur lors de la sauvegarde Cloud: " + err.message);
+    } finally {
+      setIsCloudSaving(false);
     }
-  }, [history, historyIndex]);
+  };
+
+  // Preview animation trigger
+  const handlePreviewAnimation = (elementId: string, animType: AnimationType) => {
+    setPreviewAnimation({ elementId, animType });
+    setTimeout(() => {
+      setPreviewAnimation((prev) => (prev?.elementId === elementId ? null : prev));
+    }, 950);
+  };
 
   // Keyboard Shortcuts Global Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is currently typing inside an input/textarea
       const target = e.target as HTMLElement;
       const isInput =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
@@ -157,14 +206,13 @@ export default function App() {
           handleRedo();
         } else if (e.key === 's' || e.key === 'S') {
           e.preventDefault();
-          savePresentationToStorage(presentation);
-          setIsSaved(true);
+          handleSaveToCloud();
         } else if (e.key === 'o' || e.key === 'O') {
           e.preventDefault();
-          projectFileInputRef.current?.click();
+          setShowWelcomeModal(true);
         } else if (e.key === 'n' || e.key === 'N') {
           e.preventDefault();
-          handleNewPresentation();
+          handleCreateBlank();
         } else if (e.key === 'd' || e.key === 'D') {
           e.preventDefault();
           handleDuplicateSelected();
@@ -207,11 +255,11 @@ export default function App() {
     setSelectedElementIds([]);
   };
 
-  const handleAddSlide = (layout: SlideLayout = 'title-content') => {
+  const handleAddSlide = (layout: SlideLayout = 'blank') => {
     const newSlideId = `slide-${Date.now()}`;
     const newSlide: Slide = {
       id: newSlideId,
-      title: `Nouvelle diapositive ${presentation.slides.length + 1}`,
+      title: `Diapositive ${presentation.slides.length + 1}`,
       layout,
       notes: '',
       transition: { type: 'fade', duration: 0.5 },
@@ -219,45 +267,7 @@ export default function App() {
         type: 'solid',
         color: '#0f172a',
       },
-      elements: [
-        {
-          id: `title-${Date.now()}`,
-          type: 'text',
-          name: 'Titre de la diapositive',
-          content: 'Titre de la Diapositive',
-          x: 100,
-          y: 70,
-          width: 800,
-          height: 60,
-          rotation: 0,
-          opacity: 1,
-          zIndex: 1,
-          fontSize: 36,
-          fontWeight: '800',
-          fontFamily: 'Cabinet Grotesk, sans-serif',
-          color: '#ffffff',
-          textAlign: 'left',
-        },
-        {
-          id: `body-${Date.now() + 1}`,
-          type: 'text',
-          name: 'Contenu principal',
-          content:
-            '• Cliquez pour ajouter des points clés ou des descriptions\n• Utilisez la barre d’outils pour insérer des formes, images et tableaux\n• Personnalisez les polices et couleurs dans le panneau de droite',
-          x: 100,
-          y: 160,
-          width: 800,
-          height: 300,
-          rotation: 0,
-          opacity: 0.9,
-          zIndex: 2,
-          fontSize: 18,
-          fontWeight: '400',
-          fontFamily: 'Plus Jakarta Sans, sans-serif',
-          color: '#cbd5e1',
-          lineHeight: 1.8,
-        },
-      ],
+      elements: [],
     };
 
     updatePresentation((prev) => {
@@ -466,32 +476,46 @@ export default function App() {
     setSelectedElementIds(pasted.map((p) => p.id));
   };
 
-  const handleBringForward = () => {
-    if (selectedElementIds.length !== 1 || !activeSlide) return;
-    const id = selectedElementIds[0];
-    const el = activeSlide.elements.find((item) => item.id === id);
-    if (el) {
-      handleUpdateElement(id, { zIndex: (el.zIndex || 1) + 1 });
-    }
-  };
+  // ==================== LAYER ORDERING (AVANCER / RECULER / PREMIER / DERNIER PLAN) ====================
+  const handleReorderLayer = useCallback(
+    (id: string, action: 'forward' | 'backward' | 'front' | 'back') => {
+      if (!activeSlide) return;
 
-  const handleSendBackward = () => {
-    if (selectedElementIds.length !== 1 || !activeSlide) return;
-    const id = selectedElementIds[0];
-    const el = activeSlide.elements.find((item) => item.id === id);
-    if (el) {
-      handleUpdateElement(id, { zIndex: Math.max(1, (el.zIndex || 1) - 1) });
-    }
-  };
+      const elements = [...activeSlide.elements].sort(
+        (a, b) => (a.zIndex || 0) - (b.zIndex || 0)
+      );
+      const currentIndex = elements.findIndex((el) => el.id === id);
+      if (currentIndex === -1) return;
 
-  const handleReorderElement = (id: string, direction: 'up' | 'down') => {
-    if (!activeSlide) return;
-    const el = activeSlide.elements.find((item) => item.id === id);
-    if (!el) return;
-    const currentZ = el.zIndex || 1;
-    const newZ = direction === 'up' ? currentZ + 1 : Math.max(1, currentZ - 1);
-    handleUpdateElement(id, { zIndex: newZ });
-  };
+      const [targetEl] = elements.splice(currentIndex, 1);
+
+      if (action === 'forward') {
+        const newIdx = Math.min(elements.length, currentIndex + 1);
+        elements.splice(newIdx, 0, targetEl);
+      } else if (action === 'backward') {
+        const newIdx = Math.max(0, currentIndex - 1);
+        elements.splice(newIdx, 0, targetEl);
+      } else if (action === 'front') {
+        elements.push(targetEl);
+      } else if (action === 'back') {
+        elements.unshift(targetEl);
+      }
+
+      // Reassign clean normalized zIndex
+      const updatedElements = elements.map((el, idx) => ({
+        ...el,
+        zIndex: idx + 1,
+      }));
+
+      updatePresentation((prev) => ({
+        ...prev,
+        slides: prev.slides.map((s) =>
+          s.id === activeSlideId ? { ...s, elements: updatedElements } : s
+        ),
+      }));
+    },
+    [activeSlide, activeSlideId, updatePresentation]
+  );
 
   // ==================== INSERTION TOOLS ====================
   const handleAddText = () => {
@@ -507,7 +531,7 @@ export default function App() {
       rotation: 0,
       opacity: 1,
       zIndex: (activeSlide?.elements.length || 0) + 1,
-      fontSize: 22,
+      fontSize: 24,
       fontWeight: '600',
       fontFamily: 'Cabinet Grotesk, sans-serif',
       color: '#ffffff',
@@ -704,73 +728,148 @@ export default function App() {
     setSelectedElementIds([newEl.id]);
   };
 
-  // ==================== PROJECT ACTIONS ====================
-  const handleNewPresentation = () => {
-    if (window.confirm('Créer un nouveau diaporama vide ? Les modifications non enregistrées seront remplacées.')) {
-      const newPres: Presentation = {
-        id: `hmd-${Date.now()}`,
-        title: 'Nouveau Diaporama',
-        aspectRatio: '16:9',
-        themeId: 'moderne',
-        version: '2.0.0',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        slides: [
-          {
-            id: `slide-${Date.now()}`,
-            title: 'Titre de présentation',
-            layout: 'title',
-            notes: '',
-            transition: { type: 'fade', duration: 0.5 },
-            background: { type: 'solid', color: '#0f172a' },
-            elements: [
-              {
-                id: `title-${Date.now()}`,
-                type: 'text',
-                name: 'Titre principal',
-                content: 'Titre de la Présentation',
-                x: 100,
-                y: 180,
-                width: 800,
-                height: 80,
-                rotation: 0,
-                opacity: 1,
-                zIndex: 1,
-                fontSize: 48,
-                fontWeight: '800',
-                fontFamily: 'Cabinet Grotesk, sans-serif',
-                color: '#ffffff',
-                textAlign: 'center',
-              },
-              {
-                id: `sub-${Date.now()}`,
-                type: 'text',
-                name: 'Sous-titre',
-                content: 'Sous-titre ou nom de l’auteur',
-                x: 150,
-                y: 280,
-                width: 700,
-                height: 40,
-                rotation: 0,
-                opacity: 0.8,
-                zIndex: 2,
-                fontSize: 20,
-                fontWeight: '400',
-                fontFamily: 'Plus Jakarta Sans, sans-serif',
-                color: '#94a3b8',
-                textAlign: 'center',
-              },
-            ],
+  // ==================== PROJECT CREATION & WELCOME ACTIONS ====================
+
+  /**
+   * Option 1: Create a 100% blank presentation with nothing in it
+   * (Requested: "en premier genre tu mes nouveau diapo avec rien dedant")
+   */
+  const handleCreateBlank = () => {
+    const blankSlideId = `slide-${Date.now()}`;
+    const blankPres: Presentation = {
+      id: `hmd-blank-${Date.now()}`,
+      title: 'Diaporama Vierge',
+      aspectRatio: '16:9',
+      themeId: 'moderne',
+      version: '2.0.0',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      slides: [
+        {
+          id: blankSlideId,
+          title: 'Diapositive 1',
+          layout: 'blank',
+          notes: '',
+          transition: { type: 'fade', duration: 0.5 },
+          background: {
+            type: 'solid',
+            color: '#0f172a',
           },
-        ],
-      };
-      setPresentation(newPres);
-      setActiveSlideId(newPres.slides[0].id);
-      setSelectedElementIds([]);
-      setHistory([]);
-      setHistoryIndex(-1);
-      savePresentationToStorage(newPres);
-    }
+          elements: [], // completely empty as requested!
+        },
+      ],
+    };
+
+    setPresentation(blankPres);
+    setActiveSlideId(blankSlideId);
+    setSelectedElementIds([]);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setShowWelcomeModal(false);
+    savePresentationToStorage(blankPres);
+  };
+
+  /**
+   * Option 2: Create with a chosen theme
+   */
+  const handleCreateWithTheme = (themeId: string) => {
+    const theme = getThemeById(themeId);
+    const slideId = `slide-${Date.now()}`;
+    const newPres: Presentation = {
+      id: `hmd-${Date.now()}`,
+      title: `Diaporama ${theme.name.split('(')[0].trim()}`,
+      aspectRatio: '16:9',
+      themeId,
+      version: '2.0.0',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      slides: [
+        {
+          id: slideId,
+          title: 'Titre',
+          layout: 'title',
+          notes: '',
+          transition: { type: 'fade', duration: 0.5 },
+          background: {
+            type: theme.bgGradient ? 'gradient' : 'solid',
+            color: theme.bgColor,
+            gradient: theme.bgGradient,
+          },
+          elements: [
+            {
+              id: `title-${Date.now()}`,
+              type: 'text',
+              name: 'Titre principal',
+              content: 'Titre de la Présentation',
+              x: 100,
+              y: 180,
+              width: 800,
+              height: 80,
+              rotation: 0,
+              opacity: 1,
+              zIndex: 1,
+              fontSize: 48,
+              fontWeight: '800',
+              fontFamily: theme.titleFont,
+              color: theme.textColor,
+              textAlign: 'center',
+            },
+            {
+              id: `sub-${Date.now()}`,
+              type: 'text',
+              name: 'Sous-titre',
+              content: 'Sous-titre ou nom de l’auteur',
+              x: 150,
+              y: 280,
+              width: 700,
+              height: 40,
+              rotation: 0,
+              opacity: 0.8,
+              zIndex: 2,
+              fontSize: 20,
+              fontWeight: '400',
+              fontFamily: theme.bodyFont,
+              color: theme.mutedTextColor,
+              textAlign: 'center',
+            },
+          ],
+        },
+      ],
+    };
+
+    setPresentation(newPres);
+    setActiveSlideId(slideId);
+    setSelectedElementIds([]);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setShowWelcomeModal(false);
+    savePresentationToStorage(newPres);
+  };
+
+  /**
+   * Option 3: Select and open an existing presentation (e.g. from Firebase Cloud)
+   */
+  const handleSelectPresentation = (pres: Presentation) => {
+    setPresentation(pres);
+    setActiveSlideId(pres.slides[0]?.id || 'slide-1');
+    setSelectedElementIds([]);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setShowWelcomeModal(false);
+    savePresentationToStorage(pres);
+  };
+
+  /**
+   * Load demo presentation
+   */
+  const handleLoadDemo = () => {
+    const demo = resetToDemoPresentation();
+    setPresentation(demo);
+    setActiveSlideId(demo.slides[0].id);
+    setSelectedElementIds([]);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setShowWelcomeModal(false);
   };
 
   const handleOpenFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -778,12 +877,7 @@ export default function App() {
     if (file) {
       importProjectFromFile(file)
         .then((imported) => {
-          setPresentation(imported);
-          setActiveSlideId(imported.slides[0]?.id || 'slide-1');
-          setSelectedElementIds([]);
-          setHistory([]);
-          setHistoryIndex(-1);
-          savePresentationToStorage(imported);
+          handleSelectPresentation(imported);
         })
         .catch((err) => {
           alert(`Erreur d’importation : ${err.message}`);
@@ -802,15 +896,6 @@ export default function App() {
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleResetDemo = () => {
-    const demo = resetToDemoPresentation();
-    setPresentation(demo);
-    setActiveSlideId(demo.slides[0].id);
-    setSelectedElementIds([]);
-    setHistory([]);
-    setHistoryIndex(-1);
   };
 
   const selectedElement =
@@ -840,20 +925,24 @@ export default function App() {
       <Header
         presentation={presentation}
         settings={settings}
-        canUndo={historyIndex > 0}
-        canRedo={historyIndex < history.length - 1}
+        canUndo={historyPast.length > 0}
+        canRedo={historyFuture.length > 0}
         isSaved={isSaved}
+        isCloudSaving={isCloudSaving}
+        cloudSaveSuccess={cloudSaveSuccess}
         zoom={zoom}
         onUpdateTitle={(title) => updatePresentation((p) => ({ ...p, title }))}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onZoomChange={(newZoom) => setZoom(newZoom)}
-        onNewPresentation={handleNewPresentation}
+        onNewPresentation={handleCreateBlank}
         onOpenFilePicker={() => projectFileInputRef.current?.click()}
         onSaveManual={() => {
           savePresentationToStorage(presentation);
           setIsSaved(true);
         }}
+        onSaveToCloud={handleSaveToCloud}
+        onOpenWelcomeModal={() => setShowWelcomeModal(true)}
         onExportModalOpen={() => setModalType('export')}
         onThemeModalOpen={() => setModalType('theme')}
         onSettingsModalOpen={() => setModalType('settings')}
@@ -902,8 +991,8 @@ export default function App() {
         onUpdateElement={handleUpdateElement}
         onDeleteSelected={handleDeleteSelected}
         onDuplicateSelected={handleDuplicateSelected}
-        onBringForward={handleBringForward}
-        onSendBackward={handleSendBackward}
+        onBringForward={() => selectedElement && handleReorderLayer(selectedElement.id, 'forward')}
+        onSendBackward={() => selectedElement && handleReorderLayer(selectedElement.id, 'backward')}
       />
 
       {/* Main 3-Column Studio Workspace */}
@@ -945,8 +1034,12 @@ export default function App() {
             }}
             onDeleteSelected={handleDeleteSelected}
             onDuplicateSelected={handleDuplicateSelected}
-            onBringForward={handleBringForward}
-            onSendBackward={handleSendBackward}
+            onBringForward={() => selectedElement && handleReorderLayer(selectedElement.id, 'forward')}
+            onSendBackward={() => selectedElement && handleReorderLayer(selectedElement.id, 'backward')}
+            onBringToFront={() => selectedElement && handleReorderLayer(selectedElement.id, 'front')}
+            onSendToBack={() => selectedElement && handleReorderLayer(selectedElement.id, 'back')}
+            onDragOrResizeEnd={handleDragOrResizeEnd}
+            previewAnimation={previewAnimation}
             onAddImageFromDataUrl={handleAddImageFromDataUrl}
           />
 
@@ -992,9 +1085,25 @@ export default function App() {
               slides: prev.slides.map((s) => ({ ...s, transition })),
             }));
           }}
-          onReorderElement={handleReorderElement}
+          onReorderElement={(id, direction) =>
+            handleReorderLayer(id, direction === 'up' ? 'forward' : 'backward')
+          }
+          onBringToFront={(id) => handleReorderLayer(id, 'front')}
+          onSendToBack={(id) => handleReorderLayer(id, 'back')}
+          onPreviewAnimation={handlePreviewAnimation}
         />
       </div>
+
+      {/* ==================== WELCOME & CLOUD START MODAL ==================== */}
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        currentPresentation={presentation}
+        onCreateBlank={handleCreateBlank}
+        onCreateWithTheme={handleCreateWithTheme}
+        onSelectPresentation={handleSelectPresentation}
+        onLoadDemo={handleLoadDemo}
+        onClose={() => setShowWelcomeModal(false)}
+      />
 
       {/* ==================== PRESENTATION OVERLAYS ==================== */}
       {isPresentationMode && (
@@ -1013,7 +1122,7 @@ export default function App() {
         />
       )}
 
-      {/* ==================== MODALS ==================== */}
+      {/* ==================== OTHER MODALS ==================== */}
       {modalType === 'chart' && editingElement && (
         <ChartEditorModal
           element={editingElement}
@@ -1093,7 +1202,7 @@ export default function App() {
           onChangeAspectRatio={(ratio) => {
             updatePresentation((prev) => ({ ...prev, aspectRatio: ratio }));
           }}
-          onResetDemo={handleResetDemo}
+          onResetDemo={handleLoadDemo}
           onClose={() => setModalType(null)}
         />
       )}

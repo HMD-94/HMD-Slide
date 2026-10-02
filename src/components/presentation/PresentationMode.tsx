@@ -211,10 +211,19 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           .sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1))
           .map((el) => {
             if (el.hidden) return null;
+            const hasAnim = el.animation?.type && el.animation.type !== 'none';
+            const animClass = hasAnim ? `anim-preview-${el.animation!.type}` : '';
+            const animStyle = hasAnim
+              ? {
+                  animationDuration: `${el.animation!.duration || 0.6}s`,
+                  animationDelay: `${el.animation!.delay || 0}s`,
+                }
+              : {};
+
             return (
               <div
-                key={el.id}
-                className="absolute pointer-events-none"
+                key={`${currentSlideIdx}-${el.id}`}
+                className={`absolute pointer-events-none ${animClass}`}
                 style={{
                   left: `${el.x * scale}px`,
                   top: `${el.y * scale}px`,
@@ -223,6 +232,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   transform: `rotate(${el.rotation || 0}deg)`,
                   zIndex: el.zIndex || 1,
                   opacity: el.opacity !== undefined ? el.opacity : 1,
+                  ...animStyle,
                 }}
               >
                 <RenderElement element={el} scale={scale} />

@@ -34,6 +34,9 @@ interface PropertiesPanelProps {
   onOpenTableEditor: (el: SlideElement) => void;
   onApplyTransitionToAll: (transition: Slide['transition']) => void;
   onReorderElement: (id: string, direction: 'up' | 'down') => void;
+  onBringToFront?: (id: string) => void;
+  onSendToBack?: (id: string) => void;
+  onPreviewAnimation?: (id: string, animType: AnimationType) => void;
 }
 
 export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
@@ -46,6 +49,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onOpenTableEditor,
   onApplyTransitionToAll,
   onReorderElement,
+  onBringToFront,
+  onSendToBack,
+  onPreviewAnimation,
 }) => {
   const [activeTab, setActiveTab] = useState<'props' | 'layers' | 'anim' | 'trans'>('props');
 
@@ -99,6 +105,27 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-xs text-white font-medium"
                   />
                 </div>
+
+                {/* Saisie directe du texte pour modification immédiate */}
+                {selectedElement.type === 'text' && (
+                  <div className="p-3 bg-indigo-950/30 border border-indigo-500/30 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
+                        Contenu du texte
+                      </label>
+                      <span className="text-[9px] text-indigo-400/80 font-mono">Direct</span>
+                    </div>
+                    <textarea
+                      value={selectedElement.content || ''}
+                      onChange={(e) =>
+                        onUpdateElement(selectedElement.id, { content: e.target.value })
+                      }
+                      rows={3}
+                      className="w-full p-2 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-400 resize-y leading-relaxed font-sans"
+                      placeholder="Tapez le texte ici..."
+                    />
+                  </div>
+                )}
 
                 {/* Geometry (X, Y, W, H, Rotation) */}
                 <div className="space-y-2">
@@ -360,15 +387,60 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* ==================== ONGLET CALQUES ==================== */}
         {activeTab === 'layers' && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between mb-2">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Ordre des calques (Z-Index)
+                Ordre des calques
               </span>
-              <span className="text-[10px] text-slate-500">
+              <span className="text-[10px] text-slate-500 font-mono">
                 {activeSlide.elements.length} objets
               </span>
             </div>
+
+            {/* Quick Layer Controls for selected element */}
+            {selectedElement && (
+              <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
+                <span className="text-[10px] text-slate-400 font-semibold block">
+                  Action sur « {selectedElement.name} » :
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onBringToFront?.(selectedElement.id)}
+                    className="px-2 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded text-[11px] text-white flex items-center justify-center gap-1 transition-colors"
+                    title="Mettre tout en haut de la pile"
+                  >
+                    <span>Premier plan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSendToBack?.(selectedElement.id)}
+                    className="px-2 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded text-[11px] text-white flex items-center justify-center gap-1 transition-colors"
+                    title="Mettre tout en bas de la pile"
+                  >
+                    <span>Arrière-plan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReorderElement(selectedElement.id, 'up')}
+                    className="px-2 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded text-[11px] text-indigo-300 flex items-center justify-center gap-1 transition-colors"
+                    title="Avancer d’un cran"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                    <span>Avancer</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReorderElement(selectedElement.id, 'down')}
+                    className="px-2 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 rounded text-[11px] text-indigo-300 flex items-center justify-center gap-1 transition-colors"
+                    title="Reculer d’un cran"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                    <span>Reculer</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1">
               {activeSlide.elements
@@ -558,6 +630,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         />
                       </div>
                     </div>
+
+                    {/* Bouton de prévisualisation directe de l'animation */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPreviewAnimation?.(
+                          selectedElement.id,
+                          selectedElement.animation?.type || 'fade-in'
+                        )
+                      }
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-semibold flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-600/30 active:scale-98"
+                    >
+                      <Sparkles className="w-4 h-4 text-indigo-200" />
+                      <span>Prévisualiser l’animation</span>
+                    </button>
                   </>
                 )}
               </div>
