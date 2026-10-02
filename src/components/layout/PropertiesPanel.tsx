@@ -21,6 +21,7 @@ import {
   Table,
   BarChart2,
   Image as ImageIcon,
+  Type,
 } from 'lucide-react';
 import { ColorPicker } from '../common/ColorPicker';
 
@@ -108,12 +109,15 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
                 {/* Saisie directe du texte pour modification immédiate */}
                 {selectedElement.type === 'text' && (
-                  <div className="p-3 bg-indigo-950/30 border border-indigo-500/30 rounded-xl space-y-1.5">
+                  <div className="p-3 bg-indigo-950/40 border-2 border-indigo-500/60 rounded-xl space-y-2 shadow-inner">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
-                        Contenu du texte
+                      <label className="text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Type className="w-3.5 h-3.5 text-indigo-400" />
+                        Zone de texte (Modifier)
                       </label>
-                      <span className="text-[9px] text-indigo-400/80 font-mono">Direct</span>
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 bg-indigo-600/40 text-indigo-200 rounded font-bold">
+                        En direct
+                      </span>
                     </div>
                     <textarea
                       value={selectedElement.content || ''}
@@ -121,9 +125,12 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         onUpdateElement(selectedElement.id, { content: e.target.value })
                       }
                       rows={3}
-                      className="w-full p-2 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-400 resize-y leading-relaxed font-sans"
+                      className="w-full p-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 resize-y leading-relaxed font-sans placeholder-slate-500"
                       placeholder="Tapez le texte ici..."
                     />
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Tapez ici pour modifier le texte en direct sur la diapositive.
+                    </p>
                   </div>
                 )}
 
@@ -233,6 +240,49 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         )}
                         %
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Layer Ordering / Plan */}
+                  <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Disposition du plan
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onReorderElement(selectedElement.id, 'up')}
+                        className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 rounded text-xs text-indigo-300 font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                        title="Avancer d'un cran"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Avancer</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onReorderElement(selectedElement.id, 'down')}
+                        className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700/80 rounded text-xs text-indigo-300 font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                        title="Reculer d'un cran"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Reculer</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onBringToFront?.(selectedElement.id)}
+                        className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[11px] text-slate-300 flex items-center justify-center gap-1 transition-colors"
+                        title="Placer tout au-dessus"
+                      >
+                        <span>Premier plan</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSendToBack?.(selectedElement.id)}
+                        className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-[11px] text-slate-300 flex items-center justify-center gap-1 transition-colors"
+                        title="Placer tout en-dessous"
+                      >
+                        <span>Arrière-plan</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -544,17 +594,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   <label className="text-xs text-slate-400 block mb-1">Effet d’entrée</label>
                   <select
                     value={selectedElement.animation?.type || 'none'}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const newType = e.target.value as AnimationType;
                       onUpdateElement(selectedElement.id, {
                         animation: {
-                          type: e.target.value as AnimationType,
+                          type: newType,
                           trigger: selectedElement.animation?.trigger || 'after-previous',
                           duration: selectedElement.animation?.duration || 0.6,
                           delay: selectedElement.animation?.delay || 0.1,
                           order: selectedElement.animation?.order || 1,
                         },
-                      })
-                    }
+                      });
+                      if (newType !== 'none') {
+                        onPreviewAnimation?.(selectedElement.id, newType);
+                      }
+                    }}
                     className="w-full px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-xs text-white"
                   >
                     <option value="none">Aucune animation</option>

@@ -10,6 +10,13 @@ import {
   query,
   orderBy,
 } from 'firebase/firestore';
+import {
+  getDatabase,
+  ref as rtdbRef,
+  set as rtdbSet,
+  get as rtdbGet,
+  remove as rtdbRemove,
+} from 'firebase/database';
 import { Presentation } from '../types/slides';
 
 // User's provided Firebase configuration
@@ -29,37 +36,55 @@ export const firebaseApp =
   getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const db = getFirestore(firebaseApp);
+export const rtdb = getDatabase(firebaseApp);
 
 const COLLECTION_NAME = 'presentations';
 
 /**
- * Saves a presentation to Firebase Firestore Cloud
+ * Saves a presentation to Firebase (Firestore & Realtime Database)
  */
 export async function savePresentationToFirebase(presentation: Presentation): Promise<boolean> {
+  const dataToSave = {
+    ...presentation,
+    updatedAt: Date.now(),
+  };
+
+  let savedSuccessfully = false;
+
+  // 1. Try Firestore
   try {
     const docRef = doc(db, COLLECTION_NAME, presentation.id);
-    const dataToSave = {
-      ...presentation,
-      updatedAt: Date.now(),
-    };
     await setDoc(docRef, dataToSave, { merge: true });
-    return true;
-  } catch (error) {
-    console.error('Erreur sauvegarde Firebase:', error);
-    // Fallback: save in local storage mirror
-    try {
-      const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
-      cloudMirror[presentation.id] = { ...presentation, updatedAt: Date.now() };
-      localStorage.setItem('hmd_cloud_mirror', JSON.stringify(cloudMirror));
-    } catch {}
-    return false;
+    savedSuccessfully = true;
+  } catch (fsErr) {
+    // try RTDB
   }
+
+  // 2. Try Realtime Database
+  try {
+    const dbRef = rtdbRef(rtdb, `${COLLECTION_NAME}/${presentation.id}`);
+    await rtdbSet(dbRef, dataToSave);
+    savedSuccessfully = true;
+  } catch (rtdbErr) {
+    // ignore
+  }
+
+  // 3. Local mirror backup
+  try {
+    const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
+    cloudMirror[presentation.id] = dataToSave;
+    localStorage.setItem('hmd_cloud_mirror', JSON.stringify(cloudMirror));
+    savedSuccessfully = true;
+  } catch {}
+
+  return savedSuccessfully;
 }
 
 /**
- * Loads all presentations stored in Firebase Firestore Cloud
+ * Loads all presentations stored in Firebase Cloud
  */
 export async function loadPresentationsFromFirebase(): Promise<Presentation[]> {
+  // 1. Try Firestore
   try {
     const colRef = collection(db, COLLECTION_NAME);
     const q = query(colRef, orderBy('updatedAt', 'desc'));
@@ -71,35 +96,57 @@ export async function loadPresentationsFromFirebase(): Promise<Presentation[]> {
         list.push(data);
       }
     });
-    return list;
-  } catch (error) {
-    console.warn('Erreur lecture Firebase (tentative miroir local):', error);
-    try {
-      const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
-      return Object.values(cloudMirror) as Presentation[];
-    } catch {
-      return [];
+    if (list.length > 0) return list;
+  } catch (fsErr) {
+    // fallback to RTDB
+  }
+
+  // 2. Try Realtime Database
+  try {
+    const dbRef = rtdbRef(rtdb, COLLECTION_NAME);
+    const snapshot = await rtdbGet(dbRef);
+    if (snapshot.exists()) {
+      const val = snapshot.val();
+      const list = Object.values(val) as Presentation[];
+      if (list && list.length > 0) {
+        return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      }
     }
+  } catch (rtdbErr) {
+    // fallback
+  }
+
+  // 3. Try Local Mirror Backup
+  try {
+    const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
+    const values = Object.values(cloudMirror) as Presentation[];
+    return values.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  } catch {
+    return [];
   }
 }
 
 /**
- * Deletes a presentation from Firebase Firestore Cloud
+ * Deletes a presentation from Firebase Cloud
  */
 export async function deletePresentationFromFirebase(id: string): Promise<boolean> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
     await deleteDoc(docRef);
-    try {
-      const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
-      delete cloudMirror[id];
-      localStorage.setItem('hmd_cloud_mirror', JSON.stringify(cloudMirror));
-    } catch {}
-    return true;
-  } catch (error) {
-    console.error('Erreur suppression Firebase:', error);
-    return false;
-  }
+  } catch {}
+
+  try {
+    const dbRef = rtdbRef(rtdb, `${COLLECTION_NAME}/${id}`);
+    await rtdbRemove(dbRef);
+  } catch {}
+
+  try {
+    const cloudMirror = JSON.parse(localStorage.getItem('hmd_cloud_mirror') || '{}');
+    delete cloudMirror[id];
+    localStorage.setItem('hmd_cloud_mirror', JSON.stringify(cloudMirror));
+  } catch {}
+
+  return true;
 }
 
 /**
@@ -112,8 +159,15 @@ export async function getPresentationByIdFromFirebase(id: string): Promise<Prese
     if (docSnap.exists()) {
       return docSnap.data() as Presentation;
     }
-  } catch (error) {
-    console.error('Erreur chargement diapo Firebase:', error);
-  }
+  } catch {}
+
+  try {
+    const dbRef = rtdbRef(rtdb, `${COLLECTION_NAME}/${id}`);
+    const snapshot = await rtdbGet(dbRef);
+    if (snapshot.exists()) {
+      return snapshot.val() as Presentation;
+    }
+  } catch {}
+
   return null;
 }

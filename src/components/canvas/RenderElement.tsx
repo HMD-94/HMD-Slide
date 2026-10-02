@@ -8,6 +8,7 @@ interface RenderElementProps {
   isSelected?: boolean;
   isEditingText?: boolean;
   onTextChange?: (newText: string) => void;
+  onFinishEditing?: () => void;
   onDoubleClick?: () => void;
   scale?: number;
 }
@@ -17,6 +18,7 @@ export const RenderElement: React.FC<RenderElementProps> = ({
   isSelected,
   isEditingText,
   onTextChange,
+  onFinishEditing,
   onDoubleClick,
 }) => {
   const {
@@ -78,6 +80,12 @@ export const RenderElement: React.FC<RenderElementProps> = ({
           autoFocus
           value={content}
           onChange={(e) => onTextChange(e.target.value)}
+          onBlur={onFinishEditing}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              onFinishEditing?.();
+            }
+          }}
           className="w-full h-full bg-transparent resize-none outline-none border border-indigo-400 p-0 overflow-hidden"
           style={{
             color,

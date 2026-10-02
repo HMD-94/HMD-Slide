@@ -54,13 +54,13 @@
   100% { opacity: 1; transform: scale(1); }
 }
 
-.anim-preview-fade-in { animation: fadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-slide-up { animation: slideUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-slide-down { animation: slideDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-slide-left { animation: slideLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-slide-right { animation: slideRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-zoom-in { animation: zoomIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
-.anim-preview-bounce-in { animation: bounceIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
+.anim-preview-fade-in { animation: fadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-slide-up { animation: slideUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-slide-down { animation: slideDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-slide-left { animation: slideLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-slide-right { animation: slideRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-zoom-in { animation: zoomIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
+.anim-preview-bounce-in { animation: bounceIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both !important; }
 
 @media print {
   body {

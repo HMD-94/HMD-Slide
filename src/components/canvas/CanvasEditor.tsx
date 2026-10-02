@@ -467,10 +467,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 }}
                 className={`absolute group cursor-move ${
                   isSelected ? 'ring-2 ring-indigo-500' : 'hover:ring-1 hover:ring-indigo-400/50'
-                } ${
-                  previewAnimation?.elementId === el.id
-                    ? `anim-preview-${previewAnimation.animType}`
-                    : ''
                 }`}
                 style={{
                   left: `${el.x * zoom}px`,
@@ -483,18 +479,28 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   opacity: el.opacity !== undefined ? el.opacity : 1,
                 }}
               >
-                {/* Element Body */}
-                <RenderElement
-                  element={el}
-                  isSelected={isSelected}
-                  isEditingText={isEditingText}
-                  onTextChange={(newText) => onUpdateElement(el.id, { content: newText })}
-                  onDoubleClick={() => {
-                    if (el.type === 'text') setEditingTextId(el.id);
-                    else onDoubleClickElement(el);
-                  }}
-                  scale={zoom}
-                />
+                {/* Element Body with Animation Preview */}
+                <div
+                  key={`preview-${previewAnimation?.elementId === el.id ? previewAnimation.animType : 'idle'}`}
+                  className={`w-full h-full ${
+                    previewAnimation?.elementId === el.id
+                      ? `anim-preview-${previewAnimation.animType}`
+                      : ''
+                  }`}
+                >
+                  <RenderElement
+                    element={el}
+                    isSelected={isSelected}
+                    isEditingText={isEditingText}
+                    onTextChange={(newText) => onUpdateElement(el.id, { content: newText })}
+                    onFinishEditing={() => setEditingTextId(null)}
+                    onDoubleClick={() => {
+                      if (el.type === 'text') setEditingTextId(el.id);
+                      else onDoubleClickElement(el);
+                    }}
+                    scale={zoom}
+                  />
+                </div>
 
                 {/* Selection Handles (Single Selected Element) */}
                 {isSelected && selectedElementIds.length === 1 && !el.locked && (

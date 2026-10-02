@@ -29,7 +29,7 @@ import { NotesDrawer } from './components/layout/NotesDrawer';
 import { PresentationMode } from './components/presentation/PresentationMode';
 import { PresenterMode } from './components/presentation/PresenterMode';
 
-import { WelcomeModal } from './components/modals/WelcomeModal';
+import { LauncherScreen } from './components/launcher/LauncherScreen';
 import { ChartEditorModal } from './components/modals/ChartEditorModal';
 import { TableEditorModal } from './components/modals/TableEditorModal';
 import { IconPickerModal } from './components/modals/IconPickerModal';
@@ -60,11 +60,8 @@ export default function App() {
     animType: string;
   } | null>(null);
 
-  // Welcome / Home start modal
-  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(() => {
-    // Show on first visit if nothing previously saved in localStorage
-    return !localStorage.getItem('hmd_slides_project_v1');
-  });
+  // Startup / Launcher Window: Shows on application launch
+  const [isLauncherOpen, setIsLauncherOpen] = useState<boolean>(true);
 
   // Rock-solid Undo / Redo history stack
   const [historyPast, setHistoryPast] = useState<Presentation[]>([]);
@@ -137,8 +134,17 @@ export default function App() {
     setHistoryFuture((future) => [JSON.parse(JSON.stringify(presentation)), ...future]);
     setHistoryPast(newPast);
     setPresentation(previous);
+    if (!previous.slides.some((s) => s.id === activeSlideId)) {
+      setActiveSlideId(previous.slides[0]?.id || 'slide-1');
+    }
+    const currentSlide = previous.slides.find((s) => s.id === activeSlideId) || previous.slides[0];
+    if (currentSlide) {
+      setSelectedElementIds((prev) =>
+        prev.filter((id) => currentSlide.elements.some((el) => el.id === id))
+      );
+    }
     setIsSaved(false);
-  }, [historyPast, presentation]);
+  }, [historyPast, presentation, activeSlideId]);
 
   // Redo Handler
   const handleRedo = useCallback(() => {
@@ -149,8 +155,17 @@ export default function App() {
     setHistoryPast((past) => [...past, JSON.parse(JSON.stringify(presentation))]);
     setHistoryFuture(newFuture);
     setPresentation(next);
+    if (!next.slides.some((s) => s.id === activeSlideId)) {
+      setActiveSlideId(next.slides[0]?.id || 'slide-1');
+    }
+    const currentSlide = next.slides.find((s) => s.id === activeSlideId) || next.slides[0];
+    if (currentSlide) {
+      setSelectedElementIds((prev) =>
+        prev.filter((id) => currentSlide.elements.some((el) => el.id === id))
+      );
+    }
     setIsSaved(false);
-  }, [historyFuture, presentation]);
+  }, [historyFuture, presentation, activeSlideId]);
 
   // Save to Firebase Cloud
   const handleSaveToCloud = async () => {
@@ -209,7 +224,7 @@ export default function App() {
           handleSaveToCloud();
         } else if (e.key === 'o' || e.key === 'O') {
           e.preventDefault();
-          setShowWelcomeModal(true);
+          setIsLauncherOpen(true);
         } else if (e.key === 'n' || e.key === 'N') {
           e.preventDefault();
           handleCreateBlank();
@@ -765,7 +780,7 @@ export default function App() {
     setSelectedElementIds([]);
     setHistoryPast([]);
     setHistoryFuture([]);
-    setShowWelcomeModal(false);
+    setIsLauncherOpen(false);
     savePresentationToStorage(blankPres);
   };
 
@@ -842,7 +857,7 @@ export default function App() {
     setSelectedElementIds([]);
     setHistoryPast([]);
     setHistoryFuture([]);
-    setShowWelcomeModal(false);
+    setIsLauncherOpen(false);
     savePresentationToStorage(newPres);
   };
 
@@ -855,7 +870,7 @@ export default function App() {
     setSelectedElementIds([]);
     setHistoryPast([]);
     setHistoryFuture([]);
-    setShowWelcomeModal(false);
+    setIsLauncherOpen(false);
     savePresentationToStorage(pres);
   };
 
@@ -869,7 +884,7 @@ export default function App() {
     setSelectedElementIds([]);
     setHistoryPast([]);
     setHistoryFuture([]);
-    setShowWelcomeModal(false);
+    setIsLauncherOpen(false);
   };
 
   const handleOpenFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -942,7 +957,7 @@ export default function App() {
           setIsSaved(true);
         }}
         onSaveToCloud={handleSaveToCloud}
-        onOpenWelcomeModal={() => setShowWelcomeModal(true)}
+        onOpenWelcomeModal={() => setIsLauncherOpen(true)}
         onExportModalOpen={() => setModalType('export')}
         onThemeModalOpen={() => setModalType('theme')}
         onSettingsModalOpen={() => setModalType('settings')}
@@ -980,6 +995,10 @@ export default function App() {
       {/* Secondary Toolbar */}
       <Toolbar
         selectedElement={selectedElement}
+        canUndo={historyPast.length > 0}
+        canRedo={historyFuture.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onAddText={handleAddText}
         onAddShape={handleAddShape}
         onAddImageClick={() => imageFileInputRef.current?.click()}
@@ -1094,16 +1113,18 @@ export default function App() {
         />
       </div>
 
-      {/* ==================== WELCOME & CLOUD START MODAL ==================== */}
-      <WelcomeModal
-        isOpen={showWelcomeModal}
-        currentPresentation={presentation}
-        onCreateBlank={handleCreateBlank}
-        onCreateWithTheme={handleCreateWithTheme}
-        onSelectPresentation={handleSelectPresentation}
-        onLoadDemo={handleLoadDemo}
-        onClose={() => setShowWelcomeModal(false)}
-      />
+      {/* ==================== PREMIÈRE FENÊTRE : ACCUEIL & DIAPORAMAS CLOUD ==================== */}
+      {isLauncherOpen && (
+        <LauncherScreen
+          currentPresentation={presentation}
+          onCreateBlank={handleCreateBlank}
+          onCreateWithTheme={handleCreateWithTheme}
+          onOpenPresentation={handleSelectPresentation}
+          onLoadDemo={handleLoadDemo}
+          onOpenFilePicker={() => projectFileInputRef.current?.click()}
+          onContinueCurrent={() => setIsLauncherOpen(false)}
+        />
+      )}
 
       {/* ==================== PRESENTATION OVERLAYS ==================== */}
       {isPresentationMode && (

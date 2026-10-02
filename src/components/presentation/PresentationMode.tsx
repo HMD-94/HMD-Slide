@@ -223,7 +223,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             return (
               <div
                 key={`${currentSlideIdx}-${el.id}`}
-                className={`absolute pointer-events-none ${animClass}`}
+                className="absolute pointer-events-none"
                 style={{
                   left: `${el.x * scale}px`,
                   top: `${el.y * scale}px`,
@@ -232,10 +232,14 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   transform: `rotate(${el.rotation || 0}deg)`,
                   zIndex: el.zIndex || 1,
                   opacity: el.opacity !== undefined ? el.opacity : 1,
-                  ...animStyle,
                 }}
               >
-                <RenderElement element={el} scale={scale} />
+                <div
+                  className={`w-full h-full ${animClass}`}
+                  style={animStyle}
+                >
+                  <RenderElement element={el} scale={scale} />
+                </div>
               </div>
             );
           })}
