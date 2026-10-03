@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Presentation } from '../../types/slides';
 import { RenderElement } from '../canvas/RenderElement';
+import { getSlideBackgroundCss } from '../../utils/background';
 import {
   ChevronLeft,
   ChevronRight,
@@ -171,12 +172,7 @@ export const PresenterMode: React.FC<PresenterModeProps> = ({
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-center overflow-hidden shadow-2xl relative">
             <div
               className="w-full aspect-video max-h-full rounded-xl overflow-hidden relative shadow-lg"
-              style={{
-                background:
-                  currentSlide.background.type === 'gradient' && currentSlide.background.gradient
-                    ? `linear-gradient(${currentSlide.background.gradient.from}, ${currentSlide.background.gradient.to})`
-                    : currentSlide.background.color || '#0f172a',
-              }}
+              style={getSlideBackgroundCss(currentSlide.background)}
             >
               {currentSlide.elements.map((el) => {
                 if (el.hidden) return null;

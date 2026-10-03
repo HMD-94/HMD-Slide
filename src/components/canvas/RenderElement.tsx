@@ -20,6 +20,7 @@ export const RenderElement: React.FC<RenderElementProps> = ({
   onTextChange,
   onFinishEditing,
   onDoubleClick,
+  scale = 1,
 }) => {
   const {
     type,
@@ -74,6 +75,8 @@ export const RenderElement: React.FC<RenderElementProps> = ({
 
   // Text rendering
   if (type === 'text') {
+    const effectiveFontSize = Math.max(6, Math.round((fontSize || 16) * (scale || 1)));
+
     if (isEditingText && onTextChange) {
       return (
         <textarea
@@ -89,7 +92,7 @@ export const RenderElement: React.FC<RenderElementProps> = ({
           className="w-full h-full bg-transparent resize-none outline-none border border-indigo-400 p-0 overflow-hidden"
           style={{
             color,
-            fontSize: `${fontSize}px`,
+            fontSize: `${effectiveFontSize}px`,
             fontWeight,
             fontStyle,
             fontFamily,
@@ -108,7 +111,7 @@ export const RenderElement: React.FC<RenderElementProps> = ({
         className="w-full h-full whitespace-pre-wrap break-words select-none pointer-events-auto"
         style={{
           color,
-          fontSize: `${fontSize}px`,
+          fontSize: `${effectiveFontSize}px`,
           fontWeight,
           fontStyle,
           fontFamily,

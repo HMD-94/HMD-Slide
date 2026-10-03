@@ -1,7 +1,19 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Slide, SlideElement, EditorSettings } from '../../types/slides';
 import { RenderElement } from './RenderElement';
-import { RotateCw, Copy, Scissors, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { getSlideBackgroundCss } from '../../utils/background';
+import {
+  RotateCw,
+  Copy,
+  Scissors,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Minus,
+  Type,
+  Wallpaper,
+} from 'lucide-react';
 
 interface CanvasEditorProps {
   slide: Slide;
@@ -23,6 +35,7 @@ interface CanvasEditorProps {
   onDragOrResizeEnd?: () => void;
   previewAnimation?: { elementId: string; animType: string } | null;
   onAddImageFromDataUrl: (dataUrl: string) => void;
+  onOpenBackgroundModal?: () => void;
 }
 
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
@@ -45,6 +58,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onDragOrResizeEnd,
   previewAnimation,
   onAddImageFromDataUrl,
+  onOpenBackgroundModal,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
@@ -64,10 +78,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [isResizing, setIsResizing] = useState<string | null>(null); // handle: 'tl'|'tr'|'br'|'bl'|'tm'|'bm'|'ml'|'mr'
   const [initialResizeState, setInitialResizeState] = useState<{
     id: string;
+    type: string;
     x: number;
     y: number;
     width: number;
     height: number;
+    fontSize?: number;
     mouseX: number;
     mouseY: number;
   } | null>(null);
@@ -122,22 +138,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   // Canvas background style
   const getBackgroundStyle = (): React.CSSProperties => {
-    const bg = slide.background;
-    if (bg.type === 'gradient' && bg.gradient) {
-      return {
-        backgroundImage: `linear-gradient(${bg.gradient.from}, ${bg.gradient.to})`,
-      };
-    }
-    if (bg.type === 'image' && bg.imageUrl) {
-      return {
-        backgroundImage: `url(${bg.imageUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      };
-    }
-    return {
-      backgroundColor: bg.color || '#0f172a',
-    };
+    return getSlideBackgroundCss(slide.background);
   };
 
   // Mouse Down on background (Box select or Clear)
@@ -190,20 +191,33 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     setInitialElementsPos(initialPos);
   };
 
-  // Mouse Down on resize handle
-  const handleResizeHandleMouseDown = (e: React.MouseEvent, handle: string, el: SlideElement) => {
-    e.stopPropagation();
-    e.preventDefault();
+  // Start resize from Mouse or Touch
+  const startResize = (clientX: number, clientY: number, handle: string, el: SlideElement) => {
     setIsResizing(handle);
     setInitialResizeState({
       id: el.id,
+      type: el.type,
       x: el.x,
       y: el.y,
       width: el.width,
       height: el.height,
-      mouseX: e.clientX,
-      mouseY: e.clientY,
+      fontSize: el.fontSize || 24,
+      mouseX: clientX,
+      mouseY: clientY,
     });
+  };
+
+  const handleResizeHandleMouseDown = (e: React.MouseEvent, handle: string, el: SlideElement) => {
+    e.stopPropagation();
+    e.preventDefault();
+    startResize(e.clientX, e.clientY, handle, el);
+  };
+
+  const handleResizeHandleTouchStart = (e: React.TouchEvent, handle: string, el: SlideElement) => {
+    e.stopPropagation();
+    if (e.touches.length === 1) {
+      startResize(e.touches[0].clientX, e.touches[0].clientY, handle, el);
+    }
   };
 
   // Mouse Down on rotate handle
@@ -220,13 +234,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
   };
 
-  // Global Mouse Move & Up
+  // Global Pointer (Mouse & Touch) Move & Up
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMove = (clientX: number, clientY: number) => {
       // 1. Dragging Elements
       if (isDragging && dragStartPos && initialElementsPos.length > 0) {
-        let deltaX = (e.clientX - dragStartPos.x) / zoom;
-        let deltaY = (e.clientY - dragStartPos.y) / zoom;
+        let deltaX = (clientX - dragStartPos.x) / zoom;
+        let deltaY = (clientY - dragStartPos.y) / zoom;
 
         // Snap to grid
         if (settings.snapToGrid && settings.gridSize > 1) {
@@ -272,30 +286,103 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
       // 2. Resizing Element
       if (isResizing && initialResizeState) {
-        const deltaX = (e.clientX - initialResizeState.mouseX) / zoom;
-        const deltaY = (e.clientY - initialResizeState.mouseY) / zoom;
+        const deltaX = (clientX - initialResizeState.mouseX) / zoom;
+        const deltaY = (clientY - initialResizeState.mouseY) / zoom;
 
         let { x, y, width, height } = initialResizeState;
+        let newFontSize: number | undefined = undefined;
 
-        if (isResizing.includes('r')) width += deltaX;
-        if (isResizing.includes('l')) {
-          width -= deltaX;
-          x += deltaX;
-        }
-        if (isResizing.includes('b')) height += deltaY;
-        if (isResizing.includes('t')) {
-          height -= deltaY;
-          y += deltaY;
-        }
+        if (initialResizeState.type === 'text') {
+          // PROPORTIONAL TEXT SCALING:
+          // When dragging any corner (br, bl, tr, tl), scale the box and the font size simultaneously
+          const baseFont = initialResizeState.fontSize || 24;
 
-        width = Math.max(width, 20);
-        height = Math.max(height, 20);
+          if (isResizing === 'br') {
+            const scaleW = (initialResizeState.width + deltaX) / Math.max(20, initialResizeState.width);
+            const scaleH = (initialResizeState.height + deltaY) / Math.max(20, initialResizeState.height);
+            const scaleFactor = Math.max(0.15, Math.abs(deltaX) >= Math.abs(deltaY) ? scaleW : scaleH);
+            width = Math.max(30, Math.round(initialResizeState.width * scaleFactor));
+            height = Math.max(20, Math.round(initialResizeState.height * scaleFactor));
+            newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleFactor)));
+          } else if (isResizing === 'bl') {
+            const scaleW = (initialResizeState.width - deltaX) / Math.max(20, initialResizeState.width);
+            const scaleH = (initialResizeState.height + deltaY) / Math.max(20, initialResizeState.height);
+            const scaleFactor = Math.max(0.15, Math.abs(deltaX) >= Math.abs(deltaY) ? scaleW : scaleH);
+            const newW = Math.max(30, Math.round(initialResizeState.width * scaleFactor));
+            x = initialResizeState.x + (initialResizeState.width - newW);
+            width = newW;
+            height = Math.max(20, Math.round(initialResizeState.height * scaleFactor));
+            newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleFactor)));
+          } else if (isResizing === 'tr') {
+            const scaleW = (initialResizeState.width + deltaX) / Math.max(20, initialResizeState.width);
+            const scaleH = (initialResizeState.height - deltaY) / Math.max(20, initialResizeState.height);
+            const scaleFactor = Math.max(0.15, Math.abs(deltaX) >= Math.abs(deltaY) ? scaleW : scaleH);
+            const newH = Math.max(20, Math.round(initialResizeState.height * scaleFactor));
+            y = initialResizeState.y + (initialResizeState.height - newH);
+            width = Math.max(30, Math.round(initialResizeState.width * scaleFactor));
+            height = newH;
+            newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleFactor)));
+          } else if (isResizing === 'tl') {
+            const scaleW = (initialResizeState.width - deltaX) / Math.max(20, initialResizeState.width);
+            const scaleH = (initialResizeState.height - deltaY) / Math.max(20, initialResizeState.height);
+            const scaleFactor = Math.max(0.15, Math.abs(deltaX) >= Math.abs(deltaY) ? scaleW : scaleH);
+            const newW = Math.max(30, Math.round(initialResizeState.width * scaleFactor));
+            const newH = Math.max(20, Math.round(initialResizeState.height * scaleFactor));
+            x = initialResizeState.x + (initialResizeState.width - newW);
+            y = initialResizeState.y + (initialResizeState.height - newH);
+            width = newW;
+            height = newH;
+            newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleFactor)));
+          } else if (isResizing === 'bm') {
+            // Dragging bottom handle downwards or upwards
+            height = Math.max(20, initialResizeState.height + deltaY);
+            const scaleH = height / Math.max(20, initialResizeState.height);
+            if (scaleH > 1.25 || scaleH < 0.8) {
+              newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleH)));
+            }
+          } else if (isResizing === 'tm') {
+            const newH = Math.max(20, initialResizeState.height - deltaY);
+            y = initialResizeState.y + (initialResizeState.height - newH);
+            height = newH;
+            const scaleH = height / Math.max(20, initialResizeState.height);
+            if (scaleH > 1.25 || scaleH < 0.8) {
+              newFontSize = Math.round(Math.max(8, Math.min(260, baseFont * scaleH)));
+            }
+          } else if (isResizing === 'mr') {
+            // Change box width
+            width = Math.max(40, initialResizeState.width + deltaX);
+          } else if (isResizing === 'ml') {
+            const newW = Math.max(40, initialResizeState.width - deltaX);
+            x = initialResizeState.x + (initialResizeState.width - newW);
+            width = newW;
+          }
+
+          // Always ensure the height is sufficient for font size so it doesn't clip
+          const effectiveFont = newFontSize !== undefined ? newFontSize : baseFont;
+          height = Math.max(height, Math.round(effectiveFont * 1.3));
+        } else {
+          // Standard elements resizing
+          if (isResizing.includes('r')) width += deltaX;
+          if (isResizing.includes('l')) {
+            width -= deltaX;
+            x += deltaX;
+          }
+          if (isResizing.includes('b')) height += deltaY;
+          if (isResizing.includes('t')) {
+            height -= deltaY;
+            y += deltaY;
+          }
+
+          width = Math.max(width, 20);
+          height = Math.max(height, 20);
+        }
 
         onUpdateElement(initialResizeState.id, {
           x: Math.round(x),
           y: Math.round(y),
           width: Math.round(width),
           height: Math.round(height),
+          ...(newFontSize !== undefined ? { fontSize: newFontSize } : {}),
         });
       }
 
@@ -307,7 +394,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           const elCenterX = rect.left + (el.x + el.width / 2) * zoom;
           const elCenterY = rect.top + (el.y + el.height / 2) * zoom;
           const currentAngle =
-            Math.atan2(e.clientY - elCenterY, e.clientX - elCenterX) * (180 / Math.PI);
+            Math.atan2(clientY - elCenterY, clientX - elCenterX) * (180 / Math.PI);
           let newRotation = Math.round(currentAngle - rotateStartAngle);
 
           // Snap to 0, 90, 180, 270 if close
@@ -325,8 +412,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       // 4. Box Selection
       if (selectionBox && slideRef.current) {
         const rect = slideRef.current.getBoundingClientRect();
-        const currentX = (e.clientX - rect.left) / zoom;
-        const currentY = (e.clientY - rect.top) / zoom;
+        const currentX = (clientX - rect.left) / zoom;
+        const currentY = (clientY - rect.top) / zoom;
         setSelectionBox({ ...selectionBox, currentX, currentY });
 
         const minX = Math.min(selectionBox.startX, currentX);
@@ -346,7 +433,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const handleEnd = () => {
       const wasManipulating = isDragging || !!isResizing || isRotating;
       setIsDragging(false);
       setDragStartPos(null);
@@ -361,10 +458,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleEnd);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
     };
   }, [
     isDragging,
@@ -502,9 +603,98 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   />
                 </div>
 
-                {/* Selection Handles (Single Selected Element) */}
+                {/* Selection Handles & Floating Text Bar (Single Selected Element) */}
                 {isSelected && selectedElementIds.length === 1 && !el.locked && (
                   <>
+                    {/* Floating Quick Text Size Bar right above or below text element */}
+                    {el.type === 'text' && (
+                      <div
+                        className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-900/95 backdrop-blur-md border border-indigo-500/80 px-2 py-1 rounded-xl shadow-2xl z-40 text-white animate-in fade-in zoom-in-95 pointer-events-auto shrink-0 select-none whitespace-nowrap"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                      >
+                        {/* A- (Rapetisser) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = el.fontSize || 24;
+                            const next = Math.max(8, cur - (cur > 32 ? 6 : cur > 20 ? 4 : 2));
+                            onUpdateElement(el.id, {
+                              fontSize: next,
+                              height: Math.max(el.height, Math.round(next * 1.35)),
+                            });
+                          }}
+                          className="px-2 py-0.5 bg-slate-800 hover:bg-indigo-600 rounded-md text-xs font-bold text-slate-200 hover:text-white transition-all flex items-center gap-1 active:scale-95 border border-slate-700 hover:border-indigo-400"
+                          title="Rapetisser la police (A-)"
+                        >
+                          <Minus className="w-3 h-3 text-slate-400" />
+                          <span>A-</span>
+                        </button>
+
+                        {/* Direct Size Input in pixels */}
+                        <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-950 border border-slate-700/80 rounded-md">
+                          <input
+                            type="number"
+                            min="8"
+                            max="260"
+                            value={el.fontSize || 24}
+                            onChange={(e) => {
+                              const sz = parseInt(e.target.value) || 24;
+                              onUpdateElement(el.id, {
+                                fontSize: sz,
+                                height: Math.max(el.height, Math.round(sz * 1.35)),
+                              });
+                            }}
+                            className="w-10 bg-transparent text-center font-mono font-bold text-xs text-cyan-300 focus:outline-none"
+                            title="Taille de la police en pixels"
+                          />
+                          <span className="text-[10px] text-slate-400 font-mono">px</span>
+                        </div>
+
+                        {/* A+ (Agrandir) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = el.fontSize || 24;
+                            const next = Math.min(260, cur + (cur >= 32 ? 6 : cur >= 20 ? 4 : 2));
+                            onUpdateElement(el.id, {
+                              fontSize: next,
+                              height: Math.max(el.height, Math.round(next * 1.35)),
+                            });
+                          }}
+                          className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 rounded-md text-xs font-bold text-white transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1 active:scale-95 border border-indigo-400"
+                          title="Agrandir la police (A+)"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>A+</span>
+                        </button>
+
+                        {/* Quick Size Chips */}
+                        <div className="flex items-center gap-1 pl-1.5 border-l border-slate-700/80">
+                          {[16, 24, 32, 48, 64].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() =>
+                                onUpdateElement(el.id, {
+                                  fontSize: sz,
+                                  height: Math.max(el.height, Math.round(sz * 1.35)),
+                                })
+                              }
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                                (el.fontSize || 24) === sz
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                              }`}
+                              title={`Taille ${sz}px`}
+                            >
+                              {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Rotate Handle */}
                     <div
                       onMouseDown={(e) => handleRotateHandleMouseDown(e, el)}
@@ -515,7 +705,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                     </div>
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-px h-3 bg-indigo-500" />
 
-                    {/* 8 Resize Handles */}
+                    {/* 8 Resize Handles (with mouse and touch listeners) */}
                     {[
                       { id: 'tl', cursor: 'nwse-resize', style: '-top-1.5 -left-1.5' },
                       { id: 'tm', cursor: 'ns-resize', style: '-top-1.5 left-1/2 -translate-x-1/2' },
@@ -529,8 +719,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                       <div
                         key={handle.id}
                         onMouseDown={(e) => handleResizeHandleMouseDown(e, handle.id, el)}
-                        className={`absolute w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm z-30 shadow hover:scale-125 transition-transform ${handle.style}`}
+                        onTouchStart={(e) => handleResizeHandleTouchStart(e, handle.id, el)}
+                        className={`absolute w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm z-30 shadow hover:scale-125 active:scale-125 transition-transform ${handle.style}`}
                         style={{ cursor: handle.cursor }}
+                        title={
+                          el.type === 'text' && ['br', 'bl', 'tr', 'tl'].includes(handle.id)
+                            ? 'Glisser pour agrandir ou rapetisser le texte'
+                            : 'Redimensionner'
+                        }
                       />
                     ))}
                   </>
@@ -614,6 +810,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           </button>
 
           <div className="h-px bg-slate-800 my-1" />
+
+          {onOpenBackgroundModal && (
+            <button
+              onClick={() => {
+                onOpenBackgroundModal();
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-1.5 text-left hover:bg-cyan-600/30 hover:text-white flex items-center gap-2 text-cyan-300"
+            >
+              <Wallpaper className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Arrière-plan & Fonds d'écran...</span>
+            </button>
+          )}
 
           <button
             onClick={() => {

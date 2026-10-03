@@ -22,8 +22,21 @@ import {
   BarChart2,
   Image as ImageIcon,
   Type,
+  Wallpaper,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Bold,
+  Italic,
+  Underline,
+  Plus,
+  Minus,
+  Layout,
+  Upload,
 } from 'lucide-react';
 import { ColorPicker } from '../common/ColorPicker';
+import { getSlideBackgroundCss } from '../../utils/background';
+import { GRADIENT_PRESETS } from '../../constants/wallpapers';
 
 interface PropertiesPanelProps {
   activeSlide: Slide;
@@ -38,6 +51,7 @@ interface PropertiesPanelProps {
   onBringToFront?: (id: string) => void;
   onSendToBack?: (id: string) => void;
   onPreviewAnimation?: (id: string, animType: AnimationType) => void;
+  onOpenBackgroundModal?: () => void;
 }
 
 export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
@@ -53,6 +67,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onBringToFront,
   onSendToBack,
   onPreviewAnimation,
+  onOpenBackgroundModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'props' | 'layers' | 'anim' | 'trans'>('props');
 
@@ -109,29 +124,260 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
                 {/* Saisie directe du texte pour modification immédiate */}
                 {selectedElement.type === 'text' && (
-                  <div className="p-3 bg-indigo-950/40 border-2 border-indigo-500/60 rounded-xl space-y-2 shadow-inner">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <Type className="w-3.5 h-3.5 text-indigo-400" />
-                        Zone de texte (Modifier)
-                      </label>
-                      <span className="text-[9px] uppercase px-1.5 py-0.5 bg-indigo-600/40 text-indigo-200 rounded font-bold">
-                        En direct
-                      </span>
+                  <>
+                    <div className="p-3 bg-indigo-950/40 border-2 border-indigo-500/60 rounded-xl space-y-2 shadow-inner">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Type className="w-3.5 h-3.5 text-indigo-400" />
+                          Zone de texte (Modifier)
+                        </label>
+                        <span className="text-[9px] uppercase px-1.5 py-0.5 bg-indigo-600/40 text-indigo-200 rounded font-bold">
+                          En direct
+                        </span>
+                      </div>
+                      <textarea
+                        value={selectedElement.content || ''}
+                        onChange={(e) =>
+                          onUpdateElement(selectedElement.id, { content: e.target.value })
+                        }
+                        rows={3}
+                        className="w-full p-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 resize-y leading-relaxed font-sans placeholder-slate-500"
+                        placeholder="Tapez le texte ici..."
+                      />
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        Tapez ici pour modifier le texte en direct sur la diapositive.
+                      </p>
                     </div>
-                    <textarea
-                      value={selectedElement.content || ''}
-                      onChange={(e) =>
-                        onUpdateElement(selectedElement.id, { content: e.target.value })
-                      }
-                      rows={3}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 resize-y leading-relaxed font-sans placeholder-slate-500"
-                      placeholder="Tapez le texte ici..."
-                    />
-                    <p className="text-[10px] text-slate-400 leading-tight">
-                      Tapez ici pour modifier le texte en direct sur la diapositive.
-                    </p>
-                  </div>
+
+                    {/* Section Typographie & Taille du texte (Agrandir / Rapetisser) */}
+                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                          Taille de Police (Agrandir / Rapetisser)
+                        </label>
+                        <div className="flex items-center gap-1 bg-slate-900 border border-slate-700/80 rounded px-1.5 py-0.5">
+                          <input
+                            type="number"
+                            min="8"
+                            max="260"
+                            value={selectedElement.fontSize || 24}
+                            onChange={(e) => {
+                              const sz = parseInt(e.target.value) || 24;
+                              onUpdateElement(selectedElement.id, {
+                                fontSize: sz,
+                                height: Math.max(selectedElement.height, Math.round(sz * 1.35)),
+                              });
+                            }}
+                            className="w-9 bg-transparent font-mono text-cyan-300 font-bold text-xs text-right focus:outline-none"
+                          />
+                          <span className="text-[10px] text-slate-400 font-mono">px</span>
+                        </div>
+                      </div>
+
+                      {/* Font Size A- / Slider / A+ buttons */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = selectedElement.fontSize || 24;
+                              const next = Math.max(8, current - (current > 32 ? 6 : current > 20 ? 4 : 2));
+                              onUpdateElement(selectedElement.id, {
+                                fontSize: next,
+                                height: Math.max(selectedElement.height, Math.round(next * 1.35)),
+                              });
+                            }}
+                            className="flex-1 py-1.5 bg-slate-900 hover:bg-indigo-600/30 border border-slate-700 hover:border-indigo-500 rounded-lg text-xs font-bold text-slate-200 hover:text-white transition-colors flex items-center justify-center gap-1 active:scale-95"
+                            title="Rapetisser le texte (A-)"
+                          >
+                            <Minus className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Rapetisser (A-)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = selectedElement.fontSize || 24;
+                              const next = Math.min(260, current + (current >= 32 ? 6 : current >= 20 ? 4 : 2));
+                              onUpdateElement(selectedElement.id, {
+                                fontSize: next,
+                                height: Math.max(selectedElement.height, Math.round(next * 1.35)),
+                              });
+                            }}
+                            className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-md shadow-indigo-600/30 active:scale-95"
+                            title="Agrandir le texte (A+)"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Agrandir (A+)</span>
+                          </button>
+                        </div>
+
+                        {/* Slider */}
+                        <input
+                          type="range"
+                          min="8"
+                          max="160"
+                          step="1"
+                          value={selectedElement.fontSize || 24}
+                          onChange={(e) => {
+                            const sz = parseInt(e.target.value) || 24;
+                            onUpdateElement(selectedElement.id, {
+                              fontSize: sz,
+                              height: Math.max(selectedElement.height, Math.round(sz * 1.35)),
+                            });
+                          }}
+                          className="w-full accent-indigo-500"
+                        />
+
+                        {/* Quick Size Preset Chips */}
+                        <div className="flex items-center gap-1 pt-1 overflow-x-auto pb-1">
+                          {[12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 80].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() =>
+                                onUpdateElement(selectedElement.id, {
+                                  fontSize: sz,
+                                  height: Math.max(selectedElement.height, Math.round(sz * 1.35)),
+                                })
+                              }
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors shrink-0 ${
+                                (selectedElement.fontSize || 24) === sz
+                                  ? 'bg-indigo-600 border-indigo-500 text-white font-bold'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Font Family Selection */}
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Police</label>
+                        <select
+                          value={selectedElement.fontFamily || 'inherit'}
+                          onChange={(e) =>
+                            onUpdateElement(selectedElement.id, { fontFamily: e.target.value })
+                          }
+                          className="w-full px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-xs text-white focus:outline-none"
+                        >
+                          <option value="Cabinet Grotesk, sans-serif">Cabinet Grotesk</option>
+                          <option value="Plus Jakarta Sans, sans-serif">Plus Jakarta Sans</option>
+                          <option value="Inter, sans-serif">Inter</option>
+                          <option value="Montserrat, sans-serif">Montserrat</option>
+                          <option value="Playfair Display, serif">Playfair Display</option>
+                          <option value="Merriweather, serif">Merriweather</option>
+                          <option value="Syne, sans-serif">Syne</option>
+                          <option value="JetBrains Mono, monospace">JetBrains Mono</option>
+                        </select>
+                      </div>
+
+                      {/* Styling: Bold, Italic, Underline & Alignment */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateElement(selectedElement.id, {
+                                fontWeight: selectedElement.fontWeight === '700' ? '400' : '700',
+                              })
+                            }
+                            className={`p-1.5 rounded ${
+                              selectedElement.fontWeight === '700'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Gras"
+                          >
+                            <Bold className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateElement(selectedElement.id, {
+                                fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic',
+                              })
+                            }
+                            className={`p-1.5 rounded ${
+                              selectedElement.fontStyle === 'italic'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Italique"
+                          >
+                            <Italic className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateElement(selectedElement.id, {
+                                underline: !selectedElement.underline,
+                              })
+                            }
+                            className={`p-1.5 rounded ${
+                              selectedElement.underline
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Souligné"
+                          >
+                            <Underline className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onUpdateElement(selectedElement.id, { textAlign: 'left' })}
+                            className={`p-1.5 rounded ${
+                              (selectedElement.textAlign || 'left') === 'left'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Aligner à gauche"
+                          >
+                            <AlignLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateElement(selectedElement.id, { textAlign: 'center' })}
+                            className={`p-1.5 rounded ${
+                              selectedElement.textAlign === 'center'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Centrer"
+                          >
+                            <AlignCenter className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateElement(selectedElement.id, { textAlign: 'right' })}
+                            className={`p-1.5 rounded ${
+                              selectedElement.textAlign === 'right'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title="Aligner à droite"
+                          >
+                            <AlignRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Color */}
+                      <div className="pt-2 border-t border-slate-800/80">
+                        <ColorPicker
+                          label="Couleur du texte"
+                          color={selectedElement.color || '#ffffff'}
+                          onChange={(c) => onUpdateElement(selectedElement.id, { color: c })}
+                          showTransparent={false}
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 {/* Geometry (X, Y, W, H, Rotation) */}
@@ -427,9 +673,122 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 text-slate-500 space-y-2">
-                <Sliders className="w-8 h-8 mx-auto text-slate-700" />
-                <p className="text-xs">Sélectionnez un élément sur la diapositive pour afficher ses propriétés.</p>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                    Diapositive active
+                  </span>
+                  <span className="text-[10px] text-cyan-400 font-mono font-bold">
+                    {activeSlide.elements.length} élément{activeSlide.elements.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Section Arrière-plan & Fonds d'écran */}
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Wallpaper className="w-4 h-4 text-cyan-400" />
+                      Fond d’écran & Arrière-plan
+                    </span>
+                    <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                      {activeSlide.background.type}
+                    </span>
+                  </div>
+
+                  {/* Visual Background Thumbnail */}
+                  <div
+                    className="w-full aspect-video rounded-lg shadow-inner border border-white/10 relative overflow-hidden flex items-end p-2"
+                    style={getSlideBackgroundCss(activeSlide.background)}
+                  >
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/70 text-slate-200">
+                      Aperçu actuel
+                    </span>
+                  </div>
+
+                  {/* Main Launcher Button for Background Modal */}
+                  {onOpenBackgroundModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenBackgroundModal}
+                      className="w-full py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-cyan-600/20 transition-all active:scale-95"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Fonds d'écran & Dégradés...</span>
+                    </button>
+                  )}
+
+                  {/* Quick Color Picker */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <ColorPicker
+                      label="Couleur unie"
+                      color={activeSlide.background.color || '#0f172a'}
+                      onChange={(color) =>
+                        onUpdateSlide({
+                          background: {
+                            type: 'solid',
+                            color,
+                          },
+                        })
+                      }
+                      showTransparent={false}
+                    />
+                  </div>
+
+                  {/* Quick Gradient Models */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                    <span className="text-[10px] text-slate-400 font-semibold block">
+                      Dégradés rapides
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {GRADIENT_PRESETS.slice(0, 8).map((gp) => (
+                        <button
+                          key={gp.id}
+                          type="button"
+                          onClick={() =>
+                            onUpdateSlide({
+                              background: {
+                                type: 'gradient',
+                                color: gp.to,
+                                gradient: {
+                                  from: gp.from,
+                                  to: gp.to,
+                                  direction: `${gp.angle}deg`,
+                                  angle: gp.angle,
+                                },
+                              },
+                            })
+                          }
+                          className="aspect-square rounded-lg border border-white/10 hover:border-cyan-400 hover:scale-105 transition-all shadow-sm"
+                          style={{
+                            backgroundImage: `linear-gradient(${gp.angle}deg, ${gp.from}, ${gp.to})`,
+                          }}
+                          title={gp.name}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section Mise en page (Layout) */}
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                    <Layout className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Mise en page</span>
+                  </div>
+                  <select
+                    value={activeSlide.layout}
+                    onChange={(e) => onUpdateSlide({ layout: e.target.value as any })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none"
+                  >
+                    <option value="title">Titre & Sous-titre</option>
+                    <option value="title-content">Titre & Contenu</option>
+                    <option value="two-column">Deux Colonnes</option>
+                    <option value="comparison">Comparaison</option>
+                    <option value="quote">Citation / Emphase</option>
+                    <option value="section-header">En-tête de section</option>
+                    <option value="blank">Page Vierge</option>
+                  </select>
+                </div>
               </div>
             )}
           </>

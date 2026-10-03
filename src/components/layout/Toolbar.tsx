@@ -27,6 +27,9 @@ import {
   Palette,
   Undo2,
   Redo2,
+  Wallpaper,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { ColorPicker } from '../common/ColorPicker';
 
@@ -44,6 +47,7 @@ interface ToolbarProps {
   onAddDiagram: () => void;
   onOpenIconPicker: () => void;
   onOpenThemeModal: () => void;
+  onOpenBackgroundModal: () => void;
   onUpdateElement: (id: string, updates: Partial<SlideElement>) => void;
   onDeleteSelected: () => void;
   onDuplicateSelected: () => void;
@@ -65,6 +69,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onAddDiagram,
   onOpenIconPicker,
   onOpenThemeModal,
+  onOpenBackgroundModal,
   onUpdateElement,
   onDeleteSelected,
   onDuplicateSelected,
@@ -234,6 +239,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <Palette className="w-4 h-4 text-indigo-400" />
           <span className="hidden xl:inline">Thèmes</span>
         </button>
+
+        {/* Wallpaper & Background Button */}
+        <button
+          onClick={onOpenBackgroundModal}
+          className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 transition-colors shrink-0"
+          title="Fond d’écran : fonds intégrés, importation d’image et dégradés"
+        >
+          <Wallpaper className="w-4 h-4 text-cyan-400" />
+          <span className="hidden xl:inline">Fond d'écran</span>
+        </button>
       </div>
 
       {/* Selected Element Quick Formatting Bar */}
@@ -275,21 +290,76 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <option value="JetBrains Mono, monospace">JetBrains Mono</option>
               </select>
 
-              {/* Font Size */}
-              <div className="flex items-center gap-1">
+              {/* Font Size with A- / Input / Preset Dropdown / A+ */}
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = selectedElement.fontSize || 24;
+                    const next = Math.max(8, current - (current > 32 ? 6 : current > 20 ? 4 : 2));
+                    onUpdateElement(selectedElement.id, {
+                      fontSize: next,
+                      height: Math.max(selectedElement.height, Math.round(next * 1.35)),
+                    });
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white font-bold text-xs transition-colors flex items-center gap-0.5"
+                  title="Rapetisser la taille du texte (A-)"
+                >
+                  <Minus className="w-3 h-3 text-slate-400" />
+                  <span>A-</span>
+                </button>
+
                 <input
                   type="number"
                   min="8"
-                  max="120"
-                  value={selectedElement.fontSize || 16}
-                  onChange={(e) =>
+                  max="260"
+                  value={selectedElement.fontSize || 24}
+                  onChange={(e) => {
+                    const sz = parseInt(e.target.value) || 24;
                     onUpdateElement(selectedElement.id, {
-                      fontSize: parseInt(e.target.value) || 16,
-                    })
-                  }
-                  className="w-12 px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-center text-xs text-white"
+                      fontSize: sz,
+                      height: Math.max(selectedElement.height, Math.round(sz * 1.35)),
+                    });
+                  }}
+                  className="w-10 bg-slate-950 border border-slate-700/80 rounded text-center text-xs font-mono font-bold text-cyan-300 focus:outline-none focus:border-indigo-400"
+                  title="Saisir directement la taille en px"
                 />
-                <span className="text-[10px] text-slate-500 font-mono">px</span>
+
+                <select
+                  value={selectedElement.fontSize || 24}
+                  onChange={(e) => {
+                    const sz = parseInt(e.target.value) || 24;
+                    onUpdateElement(selectedElement.id, {
+                      fontSize: sz,
+                      height: Math.max(selectedElement.height, Math.round(sz * 1.35)),
+                    });
+                  }}
+                  className="bg-transparent text-slate-400 hover:text-white text-xs font-mono text-center focus:outline-none cursor-pointer"
+                  title="Choisir une taille de police"
+                >
+                  {[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 96, 120].map((sz) => (
+                    <option key={sz} value={sz} className="bg-slate-900 text-white">
+                      {sz}px
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = selectedElement.fontSize || 24;
+                    const next = Math.min(260, current + (current >= 32 ? 6 : current >= 20 ? 4 : 2));
+                    onUpdateElement(selectedElement.id, {
+                      fontSize: next,
+                      height: Math.max(selectedElement.height, Math.round(next * 1.35)),
+                    });
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors flex items-center gap-0.5 shadow-sm shadow-indigo-600/30"
+                  title="Agrandir la taille du texte (A+)"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>A+</span>
+                </button>
               </div>
 
               {/* Bold */}

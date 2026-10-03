@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Presentation, Slide } from '../../types/slides';
 import { RenderElement } from '../canvas/RenderElement';
+import { getSlideBackgroundCss } from '../../utils/background';
 import confetti from 'canvas-confetti';
 import {
   ChevronLeft,
@@ -161,22 +162,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
   // Background styling
   const getBackgroundStyle = (): React.CSSProperties => {
-    const bg = slide.background;
-    if (bg.type === 'gradient' && bg.gradient) {
-      return {
-        backgroundImage: `linear-gradient(${bg.gradient.from}, ${bg.gradient.to})`,
-      };
-    }
-    if (bg.type === 'image' && bg.imageUrl) {
-      return {
-        backgroundImage: `url(${bg.imageUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      };
-    }
-    return {
-      backgroundColor: bg.color || '#0f172a',
-    };
+    return getSlideBackgroundCss(slide.background);
   };
 
   // Slide transition class

@@ -191,8 +191,10 @@ export interface SlideBackground {
     from: string;
     to: string;
     direction: string;
+    angle?: number;
   };
   imageUrl?: string;
+  imageFit?: 'cover' | 'contain' | 'repeat';
 }
 
 export interface Slide {

@@ -3,6 +3,7 @@ import {
   Presentation,
   Slide,
   SlideElement,
+  SlideBackground,
   SlideLayout,
   ShapeType,
   EditorSettings,
@@ -35,6 +36,7 @@ import { TableEditorModal } from './components/modals/TableEditorModal';
 import { IconPickerModal } from './components/modals/IconPickerModal';
 import { DiagramModal } from './components/modals/DiagramModal';
 import { ThemeModal } from './components/modals/ThemeModal';
+import { BackgroundModal } from './components/modals/BackgroundModal';
 import { ExportModal } from './components/modals/ExportModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 
@@ -77,13 +79,14 @@ export default function App() {
 
   // Modals state
   const [modalType, setModalType] = useState<
-    'chart' | 'table' | 'icon' | 'diagram' | 'theme' | 'export' | 'settings' | null
+    'chart' | 'table' | 'icon' | 'diagram' | 'theme' | 'export' | 'settings' | 'background' | null
   >(null);
   const [editingElement, setEditingElement] = useState<SlideElement | null>(null);
 
   // Hidden File Inputs
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const backgroundFileInputRef = useRef<HTMLInputElement>(null);
 
   // Active slide lookup
   const activeSlide =
@@ -246,6 +249,21 @@ export default function App() {
           e.preventDefault();
           handleDeleteSelected();
         }
+      } else if (!isInput && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        // Alt + ArrowUp/ArrowDown to enlarge or shrink text
+        const singleEl = activeSlide?.elements.find((el) => selectedElementIds.includes(el.id));
+        if (singleEl && singleEl.type === 'text') {
+          e.preventDefault();
+          const cur = singleEl.fontSize || 24;
+          const next =
+            e.key === 'ArrowUp'
+              ? Math.min(260, cur + (cur >= 32 ? 4 : 2))
+              : Math.max(8, cur - (cur > 32 ? 4 : 2));
+          handleUpdateElement(singleEl.id, {
+            fontSize: next,
+            height: Math.max(singleEl.height, Math.round(next * 1.35)),
+          });
+        }
       } else if (e.key === 'Escape') {
         setSelectedElementIds([]);
         setModalType(null);
@@ -362,6 +380,42 @@ export default function App() {
         s.id === id ? { ...s, background: { ...s.background, color, type: 'solid' } } : s
       ),
     }));
+  };
+
+  const handleApplyBackground = useCallback(
+    (bg: SlideBackground, applyToAll: boolean) => {
+      updatePresentation((prev) => ({
+        ...prev,
+        slides: prev.slides.map((s) =>
+          applyToAll || s.id === activeSlideId ? { ...s, background: bg } : s
+        ),
+      }));
+    },
+    [activeSlideId, updatePresentation]
+  );
+
+  const handleBackgroundFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const dataUrl = event.target.result as string;
+          handleApplyBackground(
+            {
+              type: 'image',
+              color: '#0f172a',
+              imageUrl: dataUrl,
+              imageFit: 'cover',
+            },
+            false
+          );
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    // reset file input
+    if (e.target) e.target.value = '';
   };
 
   // ==================== ELEMENT MANAGEMENT ====================
@@ -1007,6 +1061,7 @@ export default function App() {
         onAddDiagram={() => setModalType('diagram')}
         onOpenIconPicker={() => setModalType('icon')}
         onOpenThemeModal={() => setModalType('theme')}
+        onOpenBackgroundModal={() => setModalType('background')}
         onUpdateElement={handleUpdateElement}
         onDeleteSelected={handleDeleteSelected}
         onDuplicateSelected={handleDuplicateSelected}
@@ -1028,6 +1083,7 @@ export default function App() {
           onToggleHideSlide={handleToggleHideSlide}
           onChangeLayout={handleChangeLayout}
           onChangeBackground={handleChangeBackground}
+          onOpenBackgroundModal={() => setModalType('background')}
         />
 
         {/* Center: Canvas Editor & Bottom Notes Drawer */}
@@ -1060,6 +1116,7 @@ export default function App() {
             onDragOrResizeEnd={handleDragOrResizeEnd}
             previewAnimation={previewAnimation}
             onAddImageFromDataUrl={handleAddImageFromDataUrl}
+            onOpenBackgroundModal={() => setModalType('background')}
           />
 
           {/* Presenter Notes Collapsible Bar */}
@@ -1110,6 +1167,7 @@ export default function App() {
           onBringToFront={(id) => handleReorderLayer(id, 'front')}
           onSendToBack={(id) => handleReorderLayer(id, 'back')}
           onPreviewAnimation={handlePreviewAnimation}
+          onOpenBackgroundModal={() => setModalType('background')}
         />
       </div>
 
@@ -1227,6 +1285,25 @@ export default function App() {
           onClose={() => setModalType(null)}
         />
       )}
+      {modalType === 'background' && (
+        <BackgroundModal
+          currentBackground={activeSlide?.background || { type: 'solid', color: '#0f172a' }}
+          onApplyBackground={(bg, applyToAll) => {
+            handleApplyBackground(bg, applyToAll);
+            setModalType(null);
+          }}
+          onClose={() => setModalType(null)}
+        />
+      )}
+
+      {/* Hidden File Input for Background Image Import */}
+      <input
+        ref={backgroundFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleBackgroundFileChange}
+      />
     </div>
   );
 }

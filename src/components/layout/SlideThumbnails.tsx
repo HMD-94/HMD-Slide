@@ -11,8 +11,10 @@ import {
   Layout,
   PaintBucket,
   MoreVertical,
+  Wallpaper,
 } from 'lucide-react';
 import { ColorPicker } from '../common/ColorPicker';
+import { getSlideBackgroundCss } from '../../utils/background';
 
 interface SlideThumbnailsProps {
   slides: Slide[];
@@ -25,6 +27,7 @@ interface SlideThumbnailsProps {
   onToggleHideSlide: (id: string) => void;
   onChangeLayout: (id: string, layout: SlideLayout) => void;
   onChangeBackground: (id: string, color: string) => void;
+  onOpenBackgroundModal?: () => void;
 }
 
 export const SlideThumbnails: React.FC<SlideThumbnailsProps> = ({
@@ -38,6 +41,7 @@ export const SlideThumbnails: React.FC<SlideThumbnailsProps> = ({
   onToggleHideSlide,
   onChangeLayout,
   onChangeBackground,
+  onOpenBackgroundModal,
 }) => {
   const [menuOpenSlideId, setMenuOpenSlideId] = useState<string | null>(null);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -91,13 +95,8 @@ export const SlideThumbnails: React.FC<SlideThumbnailsProps> = ({
             >
               {/* Mini Slide Render Frame */}
               <div
-                className="w-full aspect-video relative flex flex-col justify-between p-2 overflow-hidden"
-                style={{
-                  background:
-                    slide.background.type === 'gradient' && slide.background.gradient
-                      ? `linear-gradient(${slide.background.gradient.from}, ${slide.background.gradient.to})`
-                      : slide.background.color || '#0f172a',
-                }}
+                className="w-full aspect-video relative flex flex-col justify-between p-2 overflow-hidden shadow-inner"
+                style={getSlideBackgroundCss(slide.background)}
               >
                 {/* Badge Number */}
                 <div className="flex items-center justify-between">
@@ -259,11 +258,27 @@ export const SlideThumbnails: React.FC<SlideThumbnailsProps> = ({
             )}
           </div>
 
-          {/* Change Slide Background */}
+          {/* Change Slide Background Modal Launcher */}
+          {onOpenBackgroundModal && (
+            <button
+              type="button"
+              onClick={onOpenBackgroundModal}
+              className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-white transition-all text-xs group"
+              title="Fonds d'écran intégrés, importation d'images et dégradés personnalisables"
+            >
+              <span className="flex items-center gap-1.5 font-medium">
+                <Wallpaper className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                <span>Fonds d'écran & Dégradés</span>
+              </span>
+              <span className="text-[10px] text-cyan-400 font-mono">Modèles</span>
+            </button>
+          )}
+
+          {/* Quick Slide Color Picker */}
           <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800">
-            <span className="flex items-center gap-1.5 text-slate-300">
-              <PaintBucket className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Arrière-plan</span>
+            <span className="flex items-center gap-1.5 text-slate-300 text-xs">
+              <PaintBucket className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Couleur unie</span>
             </span>
             <ColorPicker
               color={activeSlide.background.color || '#0f172a'}
