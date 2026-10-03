@@ -39,6 +39,7 @@ import { ThemeModal } from './components/modals/ThemeModal';
 import { BackgroundModal } from './components/modals/BackgroundModal';
 import { ExportModal } from './components/modals/ExportModal';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { Check, AlertCircle, Sparkles, Cloud } from 'lucide-react';
 
 export default function App() {
   // Main presentation state
@@ -55,6 +56,22 @@ export default function App() {
   // Cloud Save State
   const [isCloudSaving, setIsCloudSaving] = useState<boolean>(false);
   const [cloudSaveSuccess, setCloudSaveSuccess] = useState<boolean>(false);
+
+  // In-app Toast notifications (avoids window.alert inside iframe)
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null);
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'success', durationMs = 3500) => {
+      setToast({ message, type });
+      setTimeout(() => {
+        setToast((prev) => (prev?.message === message ? null : prev));
+      }, durationMs);
+    },
+    []
+  );
 
   // Animation preview state
   const [previewAnimation, setPreviewAnimation] = useState<{
@@ -178,12 +195,13 @@ export default function App() {
       const ok = await savePresentationToFirebase(presentation);
       if (ok) {
         setCloudSaveSuccess(true);
+        showToast("Diaporama enregistré dans le Cloud avec succès !", "success");
         setTimeout(() => setCloudSaveSuccess(false), 3500);
       } else {
-        alert("Sauvegardé dans le cache Cloud local. Vérifiez la configuration des règles Firebase.");
+        showToast("Erreur lors de la sauvegarde Cloud. Vérifiez votre connexion.", "error");
       }
     } catch (err: any) {
-      alert("Erreur lors de la sauvegarde Cloud: " + err.message);
+      showToast("Erreur lors de la sauvegarde Cloud: " + (err?.message || 'Erreur inconnue'), "error");
     } finally {
       setIsCloudSaving(false);
     }
@@ -949,7 +967,7 @@ export default function App() {
           handleSelectPresentation(imported);
         })
         .catch((err) => {
-          alert(`Erreur d’importation : ${err.message}`);
+          showToast(`Erreur d’importation : ${err.message}`, 'error');
         });
     }
   };
@@ -1304,6 +1322,28 @@ export default function App() {
         className="hidden"
         onChange={handleBackgroundFileChange}
       />
+
+      {/* Floating Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium transition-all animate-in fade-in slide-in-from-bottom-3 duration-200 ${
+            toast.type === 'success'
+              ? 'bg-emerald-950/95 border-emerald-500/60 text-emerald-200 shadow-emerald-900/30'
+              : toast.type === 'error'
+              ? 'bg-rose-950/95 border-rose-500/60 text-rose-200 shadow-rose-900/30'
+              : 'bg-indigo-950/95 border-indigo-500/60 text-indigo-200 shadow-indigo-900/30'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : toast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : (
+            <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+          )}
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }
